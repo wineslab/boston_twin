@@ -1,9 +1,7 @@
 from pathlib import Path
 from typing import Union, List, Tuple
 from ..functions.constants import LOCAL_CRS_ORIGIN_GEO, LOCAL_CRS_ORIGIN_STATE
-import geopandas as gpd
 import mitsuba as mi
-import shapely as shp
 import open3d as o3d
 
 
