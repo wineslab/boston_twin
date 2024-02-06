@@ -99,19 +99,21 @@ class BostonTwin:
         rx_antenna_ids,
         tx_names=[],
         rx_names=[],
-        tx_params=[{}],
-        rx_params=[{}],
+        tx_params=[],
+        rx_params=[],
     ):
         if not tx_names:
             tx_names = [f"TX_{i}" for i in range(len(tx_antenna_ids))]
 
-        
         for tx_idx, (tx_name, tx_antenna_idx) in enumerate(zip(tx_names, tx_antenna_ids)):
             antenna_coords = list(
                 self.current_scene_antennas.loc[tx_antenna_idx, "geometry"].coords[0]
             )
             antenna_coords.append(self.node_height)
-            tx_par = tx_params[tx_idx]
+            if len(tx_params)>0:
+                tx_par = tx_params[tx_idx]
+            else:
+                tx_par = {}
             tx = Transmitter(tx_name, position=antenna_coords, **tx_par)
             self.current_sionna_scene.add(tx)
             self.txs.append(tx)
@@ -124,8 +126,10 @@ class BostonTwin:
                 self.current_scene_antennas.loc[rx_antenna_idx, "geometry"].coords[0]
             )
             antenna_coords.append(self.node_height)
-            print(antenna_coords)
-            rx_par = rx_params[rx_idx]
+            if len(rx_params) > 0:
+                rx_par = rx_params[rx_idx]
+            else:
+                rx_par = {}
             rx = Receiver(rx_name, position=antenna_coords, **rx_par)
             self.current_sionna_scene.add(rx)
             self.rxs.append(rx)
