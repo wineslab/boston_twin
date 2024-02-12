@@ -1,3 +1,5 @@
+![alt text](bostontwin/boston3d/BOS_G_5_render.png "Boston Twin")
+
 # BostonTwin
 Repository for the BostonTwin dataset API.
 
