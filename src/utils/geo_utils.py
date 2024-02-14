@@ -1,7 +1,10 @@
 import mitsuba as mi
 from typing import Union
 from .constants import LOCAL_CRS_ORIGIN_STATE, FT2M_FACTOR
+import pyproj
+from pathlib import Path
 
+data_dir = Path(__file__).parents[2].joinpath("data")
 
 def obj2ply_mi(
     x_shift,
@@ -61,15 +64,22 @@ def gdf2localcrs(in_coords_gdf):
     #     index=[0], geometry=[origin_epsg4326], crs="epsg:4326"
     # ).to_crs("epsg:2249")
     # local_offset = list(origin_gdf_epsg2249["geometry"][0].coords[0])
-    local_offset = LOCAL_CRS_ORIGIN_STATE
+    # local_offset = LOCAL_CRS_ORIGIN_STATE
 
-    in_coords_gdf_epsg2249 = in_coords_gdf.to_crs("epsg:2249")
-    in_coords_gdf_local_crs = in_coords_gdf_epsg2249.translate(
-        xoff=-local_offset[0], yoff=-local_offset[1]
-    )
+    # in_coords_gdf_epsg2249 = in_coords_gdf.to_crs("epsg:2249")
+    # in_coords_gdf_local_crs = in_coords_gdf_epsg2249.translate(
+    #     xoff=-local_offset[0], yoff=-local_offset[1]
+    # )
+
+    prj_path = data_dir.joinpath("Metro_Boston_3D_CRS.prj")
+    with open(prj_path, "r") as f:
+        prj_str = f.readline()
+        crs = pyproj.CRS.from_wkt(prj_str)
+    in_coords_gdf.to_crs(crs)
+
     # convert to meters
-    out_coords_gdf_local_crs = in_coords_gdf_epsg2249.copy()
-    out_coords_gdf_local_crs["geometry"] = in_coords_gdf_local_crs.scale(
+    out_coords_gdf_local_crs = in_coords_gdf.copy()
+    out_coords_gdf_local_crs["geometry"] = in_coords_gdf.scale(
         FT2M_FACTOR, FT2M_FACTOR, origin=(0, 0)
     )
     return out_coords_gdf_local_crs

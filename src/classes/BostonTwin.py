@@ -4,17 +4,20 @@ from typing import Union
 from pathlib import Path
 import geopandas as gpd
 import mitsuba as mi
+import numpy as np
+import pyproj
 
 from sionna.rt import load_scene, Transmitter, Receiver
-from src.functions.geo_utils import gdf2localcrs
+from src.utils.geo_utils import gdf2localcrs
 
 
 class BostonTwin:
     def __init__(
         self,
         dataset_dir: Union[Path, str] = Path("dataset"),
-    ):
-        self.boston_model = BostonModel(dataset_dir.joinpath("boston3d"))
+    ):  
+        self.boston_model_path = dataset_dir.joinpath("boston3d")
+        self.boston_model = BostonModel(self.boston_model_path)
         self.boston_antennas = BostonAntennas(dataset_dir.joinpath("boston_antennas"))
 
         self.current_scene_name = ""
@@ -135,6 +138,23 @@ class BostonTwin:
             self.rxs.append(rx)
 
         return dict(zip(tx_names + rx_names, self.txs + self.rxs))
+
+    def generate_scene_from_radius(self, scene_name, center_lon, center_lat, side_m, load=False):
+        radius = np.sqrt(2)*side_m # m
+        azimuths = [45,225]
+
+        geod = pyproj.Geod(ellps='WGS84')
+        lon1, lat1, _ = geod.fwd(center_lon, center_lat, azimuths[0], radius) 
+        lon2, lat2, _ = geod.fwd(center_lon, center_lat, azimuths[1], radius) 
+        bbox = [lon1, lat1, lon2, lat2]
+        print("Selecting models within the area...")
+        boston_gdf = gpd.GeoDataFrame.from_file(self.boston_model_path.joinpath("boston.geojson"),
+                                                bbox=bbox)
+        print(boston_gdf.shape)
+        print(boston_gdf.crs)
+        print("Done.")
+        self.boston_model.generate_scene_from_model_gdf(boston_gdf,(center_lon, center_lat),scene_name)
+        
 
     @staticmethod
     def translate_gdf(gdf, xoff, yoff):

@@ -1,9 +1,15 @@
 from pathlib import Path
-from typing import Union, List, Tuple
-from ..functions.constants import LOCAL_CRS_ORIGIN_GEO, LOCAL_CRS_ORIGIN_STATE
+from typing import Union
+from ..utils.constants import LOCAL_CRS_ORIGIN_GEO, LOCAL_CRS_ORIGIN_STATE
+from ..utils.obj_utils import create_ground, get_mi_dict
+from ..utils.geo_utils import gdf2localcrs
+from ..utils.utils import print_eta
+
 import mitsuba as mi
 import open3d as o3d
-
+import geopandas as gpd
+import shapely as shp
+import time
 
 class BostonModel:
     def __init__(
@@ -22,12 +28,6 @@ class BostonModel:
         self.tile_names = list(self.tiles_dict.keys())
 
         self.origin_epsg4326 = LOCAL_CRS_ORIGIN_GEO
-        # origin_pnt = shp.Point(LOCAL_CRS_ORIGIN_GEO)
-        # origin_gdf = gpd.GeoDataFrame(
-        #     index=[0], geometry=[origin_pnt], crs="epsg:4326"
-        # ).to_crs("epsg:2249")
-        # self.origin_epsg2249 = list(origin_gdf.values[0][0].coords)[0]
-
         self.origin_epsg2249 = LOCAL_CRS_ORIGIN_STATE
 
         self.flat = (
@@ -131,9 +131,127 @@ class BostonModel:
         print(
             f"Output scene has {n_vert_out} vertices and {n_triangles_out} triangles."
         )
+        print(f"Saved in {scene_out_path}")
 
-    def generate_area_scene(
-        self, origin_lonlat: Union[Tuple, List], scene_out_name: str
-    ):
-        mi.xml.dict_to_xml()
-        # https://mitsuba.readthedocs.io/en/latest/src/api_reference.html#properties
+    def generate_scene_from_model_gdf(self, model_gdf, scene_center, scene_name) -> None:
+        out_scene_path = self.dataset_dir
+        meshes_path = self.mesh_dir
+
+        scene_dict_mi = {
+            "type": "scene",
+            "integrator": {
+                "type": "path",
+            },
+            "light": {"type": "constant"},
+            "mat-itu_brick": {
+                "type": "twosided",
+                "bsdf": {
+                    "type": "diffuse",
+                    "reflectance": {
+                        "type": "rgb",
+                        "value": [0.401968, 0.111874, 0.086764],
+                    },
+                },
+            },
+            "mat-itu_concrete": {
+                "type": "twosided",
+                "bsdf": {
+                    "type": "diffuse",
+                    "reflectance": {
+                        "type": "rgb",
+                        "value": [0.539479, 0.539479, 0.539480],
+                    },
+                },
+            },
+            "mat-itu_medium_dry_ground": {
+                "type": "twosided",
+                "bsdf": {
+                    "type": "diffuse",
+                    "reflectance": {
+                        "type": "rgb",
+                        "value": [65 / 255, 60 / 255, 60 / 255],
+                    },
+                },
+            },
+        }
+        print(f"Converting GDF to local CRS...({model_gdf.shape})")
+        t0 = time.time()
+        model_gdf = gdf2localcrs(model_gdf)
+        t1 = time.time()
+        print(f"Done in {t1-t0} s.")
+        scene_bounds = model_gdf.total_bounds
+        scene_size = scene_bounds[2]-scene_bounds[0]
+        print(f"Scene size is {scene_size}x{scene_size} m.")
+
+        # load frame obj and use it as (flat) ground
+        frame_name = f"{scene_name}_Frame"
+        base_rect_path = meshes_path.joinpath("rectangle.ply")
+        frame_material = "mat-itu_medium_dry_ground"
+        out_model_dict, _ = create_ground(
+            frame_material,
+            0,
+            0,
+            0,
+            scene_size/2+100,  # slightly increase the boundary
+            base_rect_path,
+            meshes_path.joinpath(frame_name + ".ply"),
+            self.dataset_dir,
+        )
+
+        model_dict = out_model_dict.copy()
+
+        scene_dict_mi["ground"] = model_dict
+
+        model_gdf["center"] = model_gdf.centroid
+        n_tri_list = []
+        n_models_tile = model_gdf.shape[0]
+        times = []
+        for row_idx,model_row in model_gdf.iterrows():
+            t0 = time.time()
+            model_name = model_row["Model_ID"].values[0]
+            model_mesh_path = meshes_path.joinpath(model_name).with_suffix(".ply")
+
+            model_struct_type = model_row["StructType"].values[0]
+            if model_struct_type == "Wall":
+                model_material = "mat-itu_brick"
+            else:
+                model_material = "mat-itu_concrete"
+
+            center_x, center_y = model_row["center"].values[0]
+            out_model_dict, n_tri = get_mi_dict(
+                model_mesh_path, center_x, center_y, 0, out_scene_path, model_material
+            )
+            n_tri_list.append(n_tri)
+
+            # add model to the tile scene
+            tile_model_dict = out_model_dict.copy()
+            tile_model_dict["to_world"] = tile_model_dict[
+                "to_world"
+            ] @ mi.ScalarTransform4f.translate([-scene_center[0], -scene_center[1], 0])
+            scene_dict_mi[model_name] = tile_model_dict
+
+            t1 = time.time()
+
+            print_eta(t0, t1, times, row_idx, n_models_tile)
+
+        tile_n_tri = sum(n_tri_list)
+
+        output_tile_scene_path = self.out_dataset_dir.joinpath(scene_name + ".xml")
+        mi.xml.dict_to_xml(scene_dict_mi, str(output_tile_scene_path.resolve()))
+        model_gdf.to_file(
+            output_tile_scene_path.with_suffix(".geojson"), driver="GeoJSON"
+        )
+
+        output_tile_info_path = self.out_dataset_dir.joinpath(
+            scene_name + "_tileinfo" + ".geojson"
+        )
+        tile_info = gpd.GeoDataFrame(geometry=shp.Box(**model_gdf.total_bounds))
+        tile_info["Centr_X_m"] = scene_center[0]
+        tile_info["Centr_Y_m"] = scene_center[1]
+        tile_info["n_models"] = n_models_tile
+        tile_info["n_triangles"] = tile_n_tri
+        tile_info.to_file(output_tile_info_path, driver="GeoJSON")
+
+        print(
+            f"Scene {scene_name} imported. There were {n_models_tile} models ({tile_n_tri} triangles)."
+        )
