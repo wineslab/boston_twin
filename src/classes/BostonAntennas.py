@@ -1,7 +1,7 @@
 import geopandas as gpd
 from typing import Union
 from pathlib import Path
-from src.functions.geo_utils import gdf2localcrs
+from src.utils.geo_utils import gdf2localcrs
 
 
 class BostonAntennas:
@@ -10,8 +10,6 @@ class BostonAntennas:
         self.antennas_path = dataset_dir.joinpath("antennas.geojson")
 
         self.antenna_gdf_epsg4326 = gpd.read_file(self.antennas_path)  # crs="epsg:4326"
-        self.antenna_gdf_epsg2249 = self.antenna_gdf_epsg4326.to_crs("epsg:2249")
-
         # translate to the BDPA reference system
         self.antenna_gdf_local_crs = gdf2localcrs(self.antenna_gdf_epsg4326)
 
