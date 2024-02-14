@@ -3,10 +3,20 @@
 # BostonTwin
 Repository for the BostonTwin dataset API.
 
+## Requirements
+The basic requirements for the BostonTwin API are based on those of [Sionna]<https://nvlabs.github.io/sionna/>, plus some georeferencing libraries:
+1. `python>=3.8`
+2. `geopandas`
+3. `open3d`
+and the corresponding dependencies.
+We provide a yaml file for reference (`requirements.yaml`) to create a python/conda/pip virtual environment.
+Additionally, we  provide a DOCKERFILE to generate a container with all the required libraries. This is the preferred method.
+
 ## Quickstart
 1. Clone this repo
-2. Download the BostonTwin dataset from <http://hdl.handle.net/2047/D20623157> into the `bostontwin` folder.
-3. Run the `bostontwin_demo` Jupyter Notebook to see how to use BostonTwin, the Digital Twin of Boston!
+2. Install the requirements. We suggest using 
+3. Download the BostonTwin dataset from <http://hdl.handle.net/2047/D20623157> into the `bostontwin` folder.
+4. Run the `bostontwin_demo` Jupyter Notebook to see how to use BostonTwin, the Digital Twin of Boston!
 
 ## Workflow
 
@@ -14,7 +24,7 @@ Repository for the BostonTwin dataset API.
 
 BostonTwin contains the 3D models of the structures [1] and of the antennas [2] in Boston, MA, and relies on [Sionna]<https://nvlabs.github.io/sionna/> to provide a realistic characterization of the propagation of the electromagnetic signal in the area.
 
-The API offers a set of geo-referencing tools to interact with and manipulate the digital twin. Please refer to the `bostontwin_demo` Jupyter Notebook to see how to use BostonTwin.
+The API offers geo-referencing tools to interact with and manipulate the digital twin. Please refer to the `bostontwin_demo` Jupyter Notebook to see how to use BostonTwin.
 
 ## Documentation
 
