@@ -3,6 +3,7 @@ from typing import Union
 from src.utils.utils import print_eta, truncate_utf8_chars
 from src.utils.obj_utils import obj2ply_mi, create_ground
 from src.utils.constants import FT2M_FACTOR
+from shapely import wkb
 import geopandas as gpd
 import json
 import mitsuba as mi
@@ -47,13 +48,19 @@ class BostonModelDownloader:
             print(f"Tile dict found: {self.tiles_dict_path}\nLoading..")
             with open(self.tiles_dict_path, "r") as f:
                 self.tiles_dict = json.load(f)
-                self.tiles_dict = {k:{kk:(Path(vv) if (isinstance(vv,str) and ("path" in kk)) else vv) for kk,vv in v.items()} for k,v in self.tiles_dict.items()}
+                self.tiles_dict = {
+                    k: {
+                        kk: (
+                            Path(vv) if (isinstance(vv, str) and ("path" in kk)) else vv
+                        )
+                        for kk, vv in v.items()
+                    }
+                    for k, v in self.tiles_dict.items()
+                }
+            self.n_tiles = len(self.tiles_dict)
         else:
             self.tiles_dict = None
-        self.n_tiles = len(self.tiles_dict)
-
-        output_boston_gdf_path = self.out_dataset_dir.joinpath("boston" + ".geojson")
-        self._aggregate_geojson(output_boston_gdf_path)
+            self.n_tiles = 0
 
     def download_data(self, save_dir: Union[Path, str]) -> None:
         if self.tiles_dict_path.is_file():
@@ -181,6 +188,7 @@ class BostonModelDownloader:
     def _enumerate_tiles(self) -> dict:
         centers_x_m = []
         centers_y_m = []
+        total_n_models = 0
         tiles_dict = {}
         for tile_dir in self.in_model_dir.iterdir():
             if tile_dir.is_dir() and "_BldgModels_OBJ" in tile_dir.stem:
@@ -206,7 +214,7 @@ class BostonModelDownloader:
                 tile_info_epsg4326 = gpd.GeoDataFrame(
                     geometry=[tile_bounding_box], columns=["geometry"], crs="epsg:4326"
                 )
-                tile_info_epsg4326.to_file(tile_info_path,driver="GeoJSON")
+                tile_info_epsg4326.to_file(tile_info_path, driver="GeoJSON")
 
                 tile_info_local = tile_info_epsg4326.to_crs(self.local_crs)
                 tile_center_x_ft, tile_center_y_ft = [
@@ -227,6 +235,9 @@ class BostonModelDownloader:
                     and "frame" not in model_path.stem.lower()
                 ]
 
+                n_models = len(model_list)
+                total_n_models = total_n_models + n_models
+
                 tile_dict = {
                     "tile_path": tile_dir,
                     "center_x_ft": tile_center_x_ft,
@@ -234,7 +245,7 @@ class BostonModelDownloader:
                     "center_y_ft": tile_center_y_ft,
                     "center_y_m": tile_center_y_m,
                     "model_list": model_list,
-                    "n_models": len(model_list),
+                    "n_models": n_models,
                     "tile_info_path": tile_info_path,
                     "tile_catalog_path": out_model_catalog_path,
                 }
@@ -243,7 +254,11 @@ class BostonModelDownloader:
         self.n_tiles = n_tiles
         print(f"{n_tiles} imported.")
 
-        self.boston_center_m = (np.mean(centers_x_m), np.mean(centers_y_m))
+        tiles_dict["boston"] = {
+            "center_x_m": np.mean(centers_x_m),
+            "center_y_m": np.mean(centers_y_m),
+            "n_models": total_n_models,
+        }
 
         return tiles_dict
 
@@ -282,7 +297,19 @@ class BostonModelDownloader:
             },
         }
         for tile_idx, (tile_name, tile_dict) in enumerate(self.tiles_dict.items()):
+            if tile_name == "boston":
+                continue
             t0 = time.perf_counter()
+            output_tile_scene_path = self.out_dataset_dir.joinpath(tile_name + ".xml")
+            output_tile_info_path = self.out_dataset_dir.joinpath(
+                tile_name + "_tileinfo" + ".geojson"
+            )
+            if (
+                output_tile_scene_path.is_file()
+                and output_tile_scene_path.with_suffix(".geojson").is_file()
+                and output_tile_info_path.is_file()
+            ):
+                continue
 
             tile_mitsuba_scene_dict = {
                 "type": "scene",
@@ -326,9 +353,12 @@ class BostonModelDownloader:
 
             tile_model_catalog_path = tile_dict["tile_catalog_path"]
             tile_model_catalog_gdf = gpd.GeoDataFrame.from_file(
-                tile_model_catalog_path, crs="epsg:4326"
+                tile_model_catalog_path
             )
+            tile_model_catalog_gdf = tile_model_catalog_gdf.to_crs("epsg:4326")
             print(tile_model_catalog_gdf.crs)
+            _drop_z = lambda geom: wkb.loads(wkb.dumps(geom, output_dimension=2))
+            tile_model_catalog_gdf.geometry = tile_model_catalog_gdf.geometry.transform(_drop_z)
 
             # load frame obj and use it as (flat) ground
             frame_name = f"{tile_name}_Frame"
@@ -357,8 +387,6 @@ class BostonModelDownloader:
             for model_name in model_list:
                 in_model_path = tile_dir.joinpath(model_name).with_suffix(".obj")
                 out_model_path = out_model_dir.joinpath(model_name).with_suffix(".ply")
-                if out_model_path.is_file():
-                    continue
 
                 model_name = in_model_path.stem
                 # read model info
@@ -428,7 +456,11 @@ class BostonModelDownloader:
                 boston_model_dict["to_world"] = tile_model_dict[
                     "to_world"
                 ] @ mi.ScalarTransform4f.translate(
-                    [-self.boston_center_m[0], -self.boston_center_m[1], 0]
+                    [
+                        -self.tiles_dict["boston"]["center_x_m"],
+                        -self.tiles_dict["boston"]["center_y_m"],
+                        0,
+                    ]
                 )
                 boston_mitsuba_scene_dict[model_name] = boston_model_dict
 
@@ -440,7 +472,6 @@ class BostonModelDownloader:
 
             self.update_tiles_dict_json()
 
-            output_tile_scene_path = self.out_dataset_dir.joinpath(tile_name + ".xml")
             mi.xml.dict_to_xml(
                 tile_mitsuba_scene_dict, str(output_tile_scene_path.resolve())
             )
@@ -448,10 +479,9 @@ class BostonModelDownloader:
                 output_tile_scene_path.with_suffix(".geojson"), driver="GeoJSON"
             )
 
-            output_tile_info_path = self.out_dataset_dir.joinpath(
-                tile_name + "_tileinfo" + ".geojson"
+            tile_info = gpd.GeoDataFrame.from_file(
+                self.tiles_dict[tile_name]["tile_info_path"]
             )
-            tile_info = gpd.GeoDataFrame.from_file(self.tiles_dict[tile_name]["tile_info_path"])
             tile_info["Centr_X_Ft"] = self.tiles_dict[tile_name]["center_x_ft"]
             tile_info["Centr_Y_Ft"] = self.tiles_dict[tile_name]["center_y_ft"]
             tile_info["Centr_X_m"] = self.tiles_dict[tile_name]["center_x_m"]
@@ -475,15 +505,21 @@ class BostonModelDownloader:
 
     def _aggregate_geojson(self, out_path):
         scene_gdf_list = []
-        for tile_dict in self.tiles_dict.values():
+        _drop_z = lambda geom: wkb.loads(wkb.dumps(geom, output_dimension=2))
+        for tile_name, tile_dict in self.tiles_dict.items():
+            if tile_name=="boston":
+                continue
             tile_model_catalog_path = tile_dict["tile_catalog_path"]
-            tile_model_catalog_gdf = gpd.GeoDataFrame.from_file(
-                tile_model_catalog_path
+            tile_model_catalog_gdf = gpd.GeoDataFrame.from_file(tile_model_catalog_path)
+            tile_crs = tile_model_catalog_gdf.crs.list_authority()[0]
+            # if tile_crs.auth_name == "EPSG" and tile_crs.code == "4979":
+            tile_model_catalog_gdf.to_crs("epsg:4326", inplace=True)
+            tile_model_catalog_gdf.geometry = tile_model_catalog_gdf.geometry.transform(
+                _drop_z
             )
-            tile_model_catalog_gdf.to_crs("epsg:4979", inplace=True)
             scene_gdf_list.append(tile_model_catalog_gdf)
         boston_gdf = gpd.GeoDataFrame(
-            pd.concat(scene_gdf_list, ignore_index=True), crs=scene_gdf_list[0].crs
+            pd.concat(scene_gdf_list, ignore_index=True), crs="epsg:4326"
         )
         boston_gdf.to_file(out_path, driver="GeoJSON")
 
@@ -496,14 +532,16 @@ class BostonModelDownloader:
     def _get_tile_info(self):
         self.model_rootdir
 
-    def update_tiles_dict_json(self,):
+    def update_tiles_dict_json(
+        self,
+    ):
         tmp_tiles_dict = self.tiles_dict.copy()
         tmp_tiles_dict = {
             k: {kk: str(vv) if isinstance(vv, Path) else vv for kk, vv in v.items()}
             for k, v in tmp_tiles_dict.items()
         }
         for v in tmp_tiles_dict.values():
-            v.pop("tile_info_gdf","")
+            v.pop("tile_info_gdf", "")
 
         with open(self.tiles_dict_path, "w") as f:
             json.dump(tmp_tiles_dict, f, indent=4)

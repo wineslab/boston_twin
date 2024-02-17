@@ -1,10 +1,11 @@
 import mitsuba as mi
-from typing import Union
-from .constants import LOCAL_CRS_ORIGIN_STATE, FT2M_FACTOR
+from .constants import FT2M_FACTOR
 import pyproj
 from pathlib import Path
+import contextily as cx
 
 data_dir = Path(__file__).parents[2].joinpath("data")
+
 
 def obj2ply_mi(
     x_shift,
@@ -75,11 +76,33 @@ def gdf2localcrs(in_coords_gdf):
     with open(prj_path, "r") as f:
         prj_str = f.readline()
         crs = pyproj.CRS.from_wkt(prj_str)
-    in_coords_gdf.to_crs(crs)
 
     # convert to meters
-    out_coords_gdf_local_crs = in_coords_gdf.copy()
-    out_coords_gdf_local_crs["geometry"] = in_coords_gdf.scale(
+    out_coords_gdf_local_crs = in_coords_gdf.to_crs(crs)
+    out_coords_gdf_local_crs["geometry"] = out_coords_gdf_local_crs.scale(
         FT2M_FACTOR, FT2M_FACTOR, origin=(0, 0)
     )
     return out_coords_gdf_local_crs
+
+
+def plot_geodf(geodf, basemap: bool = False, title: str = "", **plot_kwargs):
+    ax = geodf.plot(*plot_kwargs)
+    if basemap:
+        cx.add_basemap(
+            ax,
+            crs=geodf.crs.to_string(),
+            source=cx.providers.CartoDB.VoyagerNoLabels,
+            zoom=17,
+        )
+        cx.add_basemap(
+            ax,
+            crs=geodf.crs.to_string(),
+            source=cx.providers.CartoDB.VoyagerOnlyLabels,
+            zoom=16,
+        )
+    ax.set_xlabel("Longitude")
+    ax.set_ylabel("Latitude")
+    if title:
+        ax.set_title(title)
+    
+    return ax

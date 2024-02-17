@@ -3,7 +3,6 @@ from typing import Union
 from ..utils.constants import LOCAL_CRS_ORIGIN_GEO, LOCAL_CRS_ORIGIN_STATE
 from ..utils.obj_utils import create_ground, get_mi_dict
 from ..utils.geo_utils import gdf2localcrs
-from ..utils.utils import print_eta
 
 import mitsuba as mi
 import open3d as o3d
@@ -137,6 +136,32 @@ class BostonModel:
         out_scene_path = self.dataset_dir
         meshes_path = self.mesh_dir
 
+        output_scene_path = self.dataset_dir.joinpath(scene_name + ".xml")
+        gdf_out_path = output_scene_path.with_suffix(".geojson")
+        if not gdf_out_path.is_file():
+            model_gdf.to_file(gdf_out_path, driver="GeoJSON")
+
+        output_scene_info_path = self.dataset_dir.joinpath(
+            scene_name + "_tileinfo" + ".geojson"
+        )
+
+        xmin, ymin, xmax, ymax = model_gdf.total_bounds
+        tile_info = gpd.GeoDataFrame(
+            geometry=[
+                shp.Polygon(
+                    [
+                        (xmin, ymin),
+                        (xmax, ymin),
+                        (xmax, ymax),
+                        (xmin, ymax),
+                        (xmin, ymin),
+                    ]
+                )
+            ],
+            columns=["geometry"],
+            crs="epsg:4326"
+        )
+
         scene_dict_mi = {
             "type": "scene",
             "integrator": {
@@ -174,14 +199,15 @@ class BostonModel:
                 },
             },
         }
-        print(f"Converting GDF to local CRS...({model_gdf.shape})")
-        t0 = time.time()
+        scene_center_local = gdf2localcrs(gpd.GeoDataFrame(geometry=[shp.Point(scene_center)],crs="epsg:4326"))
+        scene_center_local = scene_center_local["geometry"].values[0]
+        scene_center_local = [c for c in scene_center_local.coords][0]
+        print(scene_center_local)
+
         model_gdf = gdf2localcrs(model_gdf)
-        t1 = time.time()
-        print(f"Done in {t1-t0} s.")
-        scene_bounds = model_gdf.total_bounds
-        scene_size = scene_bounds[2]-scene_bounds[0]
-        print(f"Scene size is {scene_size}x{scene_size} m.")
+        xmin, ymin, xmax, ymax = model_gdf.total_bounds
+        scene_size = xmax-xmin
+        print(f"Scene size is {scene_size:.2f}x{scene_size:.2f} m.")
 
         # load frame obj and use it as (flat) ground
         frame_name = f"{scene_name}_Frame"
@@ -204,54 +230,55 @@ class BostonModel:
 
         model_gdf["center"] = model_gdf.centroid
         n_tri_list = []
-        n_models_tile = model_gdf.shape[0]
-        times = []
-        for row_idx,model_row in model_gdf.iterrows():
+        n_models_scene = model_gdf.shape[0]
+        for _, model_row in model_gdf.iterrows():
+            if model_row["Status"] != "Current":
+                continue
+            if not model_row["Gnd_El_Ft"]:
+                continue
             t0 = time.time()
-            model_name = model_row["Model_ID"].values[0]
+            model_name = model_row["Model_ID"]
             model_mesh_path = meshes_path.joinpath(model_name).with_suffix(".ply")
+            if not model_mesh_path.is_file():
+                continue
 
-            model_struct_type = model_row["StructType"].values[0]
+            model_struct_type = model_row["StructType"]
             if model_struct_type == "Wall":
                 model_material = "mat-itu_brick"
             else:
                 model_material = "mat-itu_concrete"
 
-            center_x, center_y = model_row["center"].values[0]
+            center_coords = [c for c in model_row["center"].coords]
+            center_x = center_coords[0][0]
+            center_y = center_coords[0][1]
             out_model_dict, n_tri = get_mi_dict(
-                model_mesh_path, center_x, center_y, 0, out_scene_path, model_material
+                model_mesh_path, -center_x, -center_y, 0, out_scene_path, model_material
             )
             n_tri_list.append(n_tri)
 
-            # add model to the tile scene
-            tile_model_dict = out_model_dict.copy()
-            tile_model_dict["to_world"] = tile_model_dict[
+            # add model to the scene
+            scene_model_dict = out_model_dict.copy()
+            scene_model_dict["to_world"] = scene_model_dict[
                 "to_world"
-            ] @ mi.ScalarTransform4f.translate([-scene_center[0], -scene_center[1], 0])
-            scene_dict_mi[model_name] = tile_model_dict
+            ] @ mi.ScalarTransform4f.translate(
+                [-scene_center_local[0], -scene_center_local[1], 0]
+            )
+            scene_dict_mi[model_name] = scene_model_dict
 
-            t1 = time.time()
+        scene_n_tri = sum(n_tri_list)
 
-            print_eta(t0, t1, times, row_idx, n_models_tile)
+        mi.xml.dict_to_xml(scene_dict_mi, str(output_scene_path.resolve()))
 
-        tile_n_tri = sum(n_tri_list)
-
-        output_tile_scene_path = self.out_dataset_dir.joinpath(scene_name + ".xml")
-        mi.xml.dict_to_xml(scene_dict_mi, str(output_tile_scene_path.resolve()))
-        model_gdf.to_file(
-            output_tile_scene_path.with_suffix(".geojson"), driver="GeoJSON"
-        )
-
-        output_tile_info_path = self.out_dataset_dir.joinpath(
-            scene_name + "_tileinfo" + ".geojson"
-        )
-        tile_info = gpd.GeoDataFrame(geometry=shp.Box(**model_gdf.total_bounds))
         tile_info["Centr_X_m"] = scene_center[0]
         tile_info["Centr_Y_m"] = scene_center[1]
-        tile_info["n_models"] = n_models_tile
-        tile_info["n_triangles"] = tile_n_tri
-        tile_info.to_file(output_tile_info_path, driver="GeoJSON")
+        tile_info["Centr_lon"] = scene_center[0]
+        tile_info["Centr_lat"] = scene_center[1]
+        tile_info["n_models"] = n_models_scene
+        tile_info["n_triangles"] = scene_n_tri
+        tile_info.to_file(output_scene_info_path, driver="GeoJSON")
 
         print(
-            f"Scene {scene_name} imported. There were {n_models_tile} models ({tile_n_tri} triangles)."
+            f"Scene {scene_name} imported. There were {n_models_scene} models ({scene_n_tri} triangles)."
         )
+        self.tiles_dict = self._enumerate_scenes
+        self.tile_names = list(self.tiles_dict.keys())
