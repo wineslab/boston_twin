@@ -9,7 +9,7 @@ import pyproj
 import time
 
 from sionna.rt import load_scene, Transmitter, Receiver
-from src.utils.geo_utils import gdf2localcrs
+from src.utils.geo_utils import gdf2localcrs, plot_geodf
 
 
 class BostonTwin:
@@ -30,6 +30,10 @@ class BostonTwin:
         self.node_height = 10
         self.txs = []
         self.rxs = []
+
+    def _check_scene(self):
+        if self.current_scene_name is None:
+            raise ValueError("Scene not set! Run the set_scene(<scene_name>) method specifying the scene name.")
 
     def get_scene_names(self):
         return self.boston_model.tile_names
@@ -52,26 +56,31 @@ class BostonTwin:
         ]
 
     def load_mi_scene(self):
+        self._check_scene()
         self.current_mi_scene = mi.load_file(str(self.mi_scene_path.resolve()))
 
     def load_scene_geodf(self):
+        self._check_scene()
         self.geo_scene_path = self.boston_model.tiles_dict[self.current_scene_name][
             "geo_scene_path"
         ]
         scene_gdf = gpd.GeoDataFrame.from_file(self.geo_scene_path)
-        scene_gdf = gdf2localcrs(scene_gdf)
+        self.current_scene_gdf_lonlat = scene_gdf
+
+        scene_gdf_localcrs = gdf2localcrs(scene_gdf)
         self.current_scene_gdf = self.translate_gdf(
-            scene_gdf,
+            scene_gdf_localcrs,
             xoff=-self.current_scene_center[0],
             yoff=-self.current_scene_center[1],
         )
 
     def load_antennas(self):
-        scene_antennas_gdf = self.boston_antennas.get_antenna_location_from_gdf(
+        self._check_scene()
+        self.scene_antennas_gdf_lonlat = self.boston_antennas.get_antenna_location_from_gdf(
             self.current_scene_info_gdf
         )
         self.current_scene_antennas = self.translate_gdf(
-            scene_antennas_gdf,
+            self.scene_antennas_gdf_lonlat,
             xoff=-self.current_scene_center[0],
             yoff=-self.current_scene_center[1],
         )
@@ -96,6 +105,30 @@ class BostonTwin:
 
     def get_mi_scene(self):
         return self.current_mi_scene
+
+    def plot_buildings(self, basemap:bool=False, **plot_kwargs):
+        self.load_scene_geodf()
+
+        ax = plot_geodf(
+            self.current_scene_gdf_lonlat,
+            basemap=basemap,
+            title=self.current_scene_name,
+            **plot_kwargs,
+        )
+        return ax
+
+    def plot_antennas(self, basemap:bool=False, **plot_kwargs):
+        return plot_geodf(
+            self.scene_antennas_gdf_lonlat,
+            basemap=basemap,
+            title=self.current_scene_name,
+            **plot_kwargs,
+        )
+
+    def plot_twin(self, basemap:bool=False):
+        ax = self.plot_buildings(basemap=basemap)
+        ax = self.plot_antennas(basemap=False, ax=ax)
+        return ax
 
     def add_scene_antennas(
         self,
