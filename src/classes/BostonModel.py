@@ -16,10 +16,9 @@ class BostonModel:
         dataset_dir: Union[Path, str] = Path("dataset"),
     ) -> None:
         # Initialize the model from existing local directories
-        if isinstance(dataset_dir, Path):
-            self.dataset_dir = dataset_dir
-        else:
-            self.dataset_dir = Path(dataset_dir)
+        if isinstance(dataset_dir, str):
+            dataset_dir = Path(dataset_dir)
+        self.dataset_dir = dataset_dir
 
         self.mesh_dir = dataset_dir.joinpath("meshes")
 
