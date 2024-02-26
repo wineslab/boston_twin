@@ -6,6 +6,8 @@ from src.utils.geo_utils import gdf2localcrs
 
 class BostonAntennas:
     def __init__(self, dataset_dir: Union[str, Path]) -> None:
+        if isinstance(dataset_dir,str):
+            dataset_dir = Path(dataset_dir)
         self.dataset_dir = dataset_dir
         self.antennas_path = dataset_dir.joinpath("antennas.geojson")
 

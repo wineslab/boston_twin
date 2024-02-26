@@ -17,6 +17,8 @@ class BostonTwin:
         self,
         dataset_dir: Union[Path, str] = Path("dataset"),
     ):
+        if isinstance(dataset_dir,str):
+            dataset_dir=Path(dataset_dir)
         self.boston_model_path = dataset_dir.joinpath("boston3d")
         self.boston_model = BostonModel(self.boston_model_path)
         self.boston_antennas = BostonAntennas(dataset_dir.joinpath("boston_antennas"))
