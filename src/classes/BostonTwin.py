@@ -39,7 +39,7 @@ class BostonTwin:
         Sionna Scene instance of the current scene.
     current_mi_scene : mitsuba.Scene
         Mitsuba Scene instance of the current scene.
-    current_scene_antennas : geopandas.GeoDataFrame
+    current_scene_antennas_localcrs : geopandas.GeoDataFrame
         GeoDataFrame containing the information on the antennas of the current scene.
     node_height : float
         Height of the antennas of the scene. For now, all the antennas have the same height.
@@ -81,7 +81,7 @@ class BostonTwin:
         self.current_scene_gdf = None
         self.current_sionna_scene = None
         self.current_mi_scene = None
-        self.current_scene_antennas = None
+        self.current_scene_antennas_localcrs = None
 
         self.node_height = 10
         self.txs = []
@@ -149,8 +149,9 @@ class BostonTwin:
         self.scene_antennas_gdf_lonlat = self.boston_antennas.get_antenna_location_from_gdf(
             self.current_scene_info_gdf
         )
-        self.current_scene_antennas = self.translate_gdf(
-            self.scene_antennas_gdf_lonlat,
+        scene_antennas_gdf_localcrs = gdf2localcrs(self.scene_antennas_gdf_lonlat)
+        self.current_scene_antennas_localcrs = self.translate_gdf(
+            scene_antennas_gdf_localcrs,
             xoff=-self.current_scene_center[0],
             yoff=-self.current_scene_center[1],
         )
@@ -191,7 +192,7 @@ class BostonTwin:
         if load_geodf:
             self.current_scene_gdf = self.load_scene_geodf(scene_name)
 
-        return self.current_sionna_scene, self.current_scene_antennas
+        return self.current_sionna_scene, self.current_scene_antennas_localcrs
 
     def get_mi_scene(self):
         return self.current_mi_scene
@@ -253,8 +254,8 @@ class BostonTwin:
         ax : Axes
             Plot of the antennas among the building 2D footprint.
         """
-        ax = self.plot_buildings(basemap=basemap)
-        ax = self.plot_antennas(basemap=False, ax=ax)
+        ax = self.plot_buildings(basemap=basemap, color="k")
+        ax = self.plot_antennas(basemap=False, ax=ax, color="r")
         return ax
 
     def add_scene_antennas(
@@ -295,7 +296,7 @@ class BostonTwin:
             zip(tx_names, tx_antenna_ids)
         ):
             antenna_coords = list(
-                self.current_scene_antennas.loc[tx_antenna_idx, "geometry"].coords[0]
+                self.current_scene_antennas_localcrs.loc[tx_antenna_idx, "geometry"].coords[0]
             )
             antenna_coords.append(self.node_height)
             if len(tx_params) > 0:
@@ -313,7 +314,7 @@ class BostonTwin:
             zip(rx_names, rx_antenna_ids)
         ):
             antenna_coords = list(
-                self.current_scene_antennas.loc[rx_antenna_idx, "geometry"].coords[0]
+                self.current_scene_antennas_localcrs.loc[rx_antenna_idx, "geometry"].coords[0]
             )
             antenna_coords.append(self.node_height)
             if len(rx_params) > 0:

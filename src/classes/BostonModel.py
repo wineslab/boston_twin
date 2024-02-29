@@ -279,5 +279,5 @@ class BostonModel:
         print(
             f"Scene {scene_name} imported. There were {n_models_scene} models ({scene_n_tri} triangles)."
         )
-        self.tiles_dict = self._enumerate_scenes
+        self.tiles_dict = self._enumerate_scenes()
         self.tile_names = list(self.tiles_dict.keys())

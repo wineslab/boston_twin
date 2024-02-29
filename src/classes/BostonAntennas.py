@@ -15,17 +15,12 @@ class BostonAntennas:
         # translate to the BDPA reference system
         self.antenna_gdf_local_crs = gdf2localcrs(self.antenna_gdf_epsg4326)
 
-    def _get_antenna_from_local_gdf(self, scene_gdf_local):
-        xmin, ymin, xmax, ymax = scene_gdf_local.total_bounds
-        return self.get_antenna_location_from_local_bb(
-            xmin, ymin, xmax, ymax
-        )
-
     def get_antenna_location_from_gdf(self, scene_gdf):
-        scene_gdf_local_crs = gdf2localcrs(scene_gdf)
-        return self._get_antenna_from_local_gdf(scene_gdf_local_crs).reset_index()
+        if "WGS 84" not in scene_gdf.crs.name:
+            raise ValueError(f"Input GeoDataFrame must be in longitude,latitude coordinates. Instead {scene_gdf.crs.name}")
+        xmin, ymin, xmax, ymax = scene_gdf.total_bounds
+        out_gdf = self.get_antenna_location_from_bb(xmin, ymin, xmax, ymax)
+        return out_gdf
 
-    def get_antenna_location_from_local_bb(self, xmin, ymin, xmax, ymax):
-        return self.antenna_gdf_local_crs.cx[xmin:xmax, ymin:ymax].reset_index(
-            drop=True
-        )
+    def get_antenna_location_from_bb(self, xmin, ymin, xmax, ymax):
+        return self.antenna_gdf_epsg4326.cx[xmin:xmax, ymin:ymax].reset_index(drop=True)

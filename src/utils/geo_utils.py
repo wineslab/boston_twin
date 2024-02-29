@@ -86,7 +86,7 @@ def gdf2localcrs(in_coords_gdf):
 
 
 def plot_geodf(geodf, basemap: bool = False, title: str = "", **plot_kwargs):
-    ax = geodf.plot(*plot_kwargs)
+    ax = geodf.plot(**plot_kwargs)
     if basemap:
         cx.add_basemap(
             ax,
