@@ -103,10 +103,10 @@ class BostonTwin:
             )
 
     def _generate_node_pos_dict(self):
-        self._node_pos_dict = zip(
-            self.current_scene_antennas_localcrs.idx,
-            [c.coords for c in self.current_scene_antennas_localcrs.geometry],
-        )
+        self._node_pos_dict = dict(zip(
+            self.current_scene_antennas_localcrs.index,
+            [{"x":c.coords[0][0],"y":c.coords[0][1]} for c in self.current_scene_antennas_localcrs.geometry],
+        ))
 
     def get_scene_names(self) -> List[str]:
         """Return the list of scene names currently present in BostonTwin. The files describing are found in the `self.dataset_dir` directory.
@@ -141,8 +141,6 @@ class BostonTwin:
         self.mi_scene_path = self.boston_model.tiles_dict[self.current_scene_name][
             "mi_scene_path"
         ]
-
-        self._generate_node_pos_dict()
 
     def load_mi_scene(self):
         self._check_scene()
@@ -203,6 +201,8 @@ class BostonTwin:
         self.set_scene(scene_name)
 
         self.load_antennas()
+
+        self._generate_node_pos_dict()
 
         if load_sionna:
             self.current_sionna_scene = load_scene(str(self.mi_scene_path))
@@ -417,8 +417,8 @@ class BostonTwin:
         if not out_path.parent.is_dir():
             raise FileNotFoundError(f"Directory {out_path.parent} not found!")
 
-        with open(out_path,"w") as f:
-            json.dump(self._node_pos_dict,f,indent=4)
+        with open(out_path, "w") as f:
+            json.dump(self._node_pos_dict, f, indent=4)
 
     # Static Methods
     @staticmethod
