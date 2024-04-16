@@ -268,8 +268,8 @@ class BostonModel:
 
         mi.xml.dict_to_xml(scene_dict_mi, str(output_scene_path.resolve()))
 
-        tile_info["Centr_X_m"] = scene_center[0]
-        tile_info["Centr_Y_m"] = scene_center[1]
+        tile_info["Centr_X_m"] = scene_center_local[0]
+        tile_info["Centr_Y_m"] = scene_center_local[1]
         tile_info["Centr_lon"] = scene_center[0]
         tile_info["Centr_lat"] = scene_center[1]
         tile_info["n_models"] = n_models_scene

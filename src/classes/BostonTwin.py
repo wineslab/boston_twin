@@ -1,16 +1,19 @@
-from .BostonModel import BostonModel
-from .BostonAntennas import BostonAntennas
-from typing import Union, List
-from matplotlib.axes import Axes
+import json
+import time
 from pathlib import Path
+from typing import List, Union
+
 import geopandas as gpd
 import mitsuba as mi
 import numpy as np
 import pyproj
-import time
+from matplotlib.axes import Axes
+from sionna.rt import Receiver, Transmitter, load_scene
 
-from sionna.rt import load_scene, Transmitter, Receiver
 from src.utils.geo_utils import gdf2localcrs, plot_geodf
+
+from .BostonAntennas import BostonAntennas
+from .BostonModel import BostonModel
 
 
 class BostonTwin:
@@ -47,6 +50,10 @@ class BostonTwin:
         List of transmitters in the current Sionna scene.
     rxs: list
         List of receivers in the current Sionna scene.
+    _node_pos_dict: dict
+        Dictionary containing the position (in the local CRS) of the nodes in the current scene.
+        The keys correspond to the node index in the current_scene_antennas_localcrs GeoDataFrame.
+        The values are [x,y] vectors (local CRS).
 
     Methods
     -------
@@ -66,12 +73,13 @@ class BostonTwin:
     generate_scene_from_radius()
         Generate a new scene specifying its center and radius.
     """
+
     def __init__(
         self,
         dataset_dir: Union[Path, str] = Path("dataset"),
     ):
-        if isinstance(dataset_dir,str):
-            dataset_dir=Path(dataset_dir)
+        if isinstance(dataset_dir, str):
+            dataset_dir = Path(dataset_dir)
         self.dataset_dir = dataset_dir
         self.boston_model_path = dataset_dir.joinpath("boston3d")
         self.boston_model = BostonModel(self.boston_model_path)
@@ -86,10 +94,19 @@ class BostonTwin:
         self.node_height = 10
         self.txs = []
         self.rxs = []
+        self._node_pos_dict = {}
 
     def _check_scene(self):
         if self.current_scene_name is None:
-            raise ValueError("Scene not set! Run the set_scene(<scene_name>) method specifying the scene name.")
+            raise ValueError(
+                "Scene not set! Run the set_scene(<scene_name>) method specifying the scene name."
+            )
+
+    def _generate_node_pos_dict(self):
+        self._node_pos_dict = dict(zip(
+            self.current_scene_antennas_localcrs.index,
+            [{"x":c.coords[0][0],"y":c.coords[0][1]} for c in self.current_scene_antennas_localcrs.geometry],
+        ))
 
     def get_scene_names(self) -> List[str]:
         """Return the list of scene names currently present in BostonTwin. The files describing are found in the `self.dataset_dir` directory.
@@ -101,7 +118,7 @@ class BostonTwin:
         """
         return self.boston_model.tile_names
 
-    def set_scene(self, scene_name:str):
+    def set_scene(self, scene_name: str):
         """Set the current scene to `scene_name`.
 
         Parameters
@@ -146,8 +163,10 @@ class BostonTwin:
 
     def load_antennas(self):
         self._check_scene()
-        self.scene_antennas_gdf_lonlat = self.boston_antennas.get_antenna_location_from_gdf(
-            self.current_scene_info_gdf
+        self.scene_antennas_gdf_lonlat = (
+            self.boston_antennas.get_antenna_location_from_gdf(
+                self.current_scene_info_gdf
+            )
         )
         scene_antennas_gdf_localcrs = gdf2localcrs(self.scene_antennas_gdf_lonlat)
         self.current_scene_antennas_localcrs = self.translate_gdf(
@@ -157,7 +176,7 @@ class BostonTwin:
         )
 
     def load_bostontwin(
-        self, scene_name:str, load_sionna=True, load_mi_scene=False, load_geodf=False
+        self, scene_name: str, load_sionna=True, load_mi_scene=False, load_geodf=False
     ):
         """Load `scene_name` as the current scene.
 
@@ -183,6 +202,8 @@ class BostonTwin:
 
         self.load_antennas()
 
+        self._generate_node_pos_dict()
+
         if load_sionna:
             self.current_sionna_scene = load_scene(str(self.mi_scene_path))
 
@@ -197,7 +218,7 @@ class BostonTwin:
     def get_mi_scene(self):
         return self.current_mi_scene
 
-    def plot_buildings(self, basemap:bool=False, **plot_kwargs) -> Axes:
+    def plot_buildings(self, basemap: bool = False, **plot_kwargs) -> Axes:
         """Plot the buildings 2D footprint.
 
         Parameters
@@ -220,7 +241,7 @@ class BostonTwin:
         )
         return ax
 
-    def plot_antennas(self, basemap:bool=False, **plot_kwargs) -> Axes:
+    def plot_antennas(self, basemap: bool = False, **plot_kwargs) -> Axes:
         """Plot the location of the antennas in the current scene.
 
         Parameters
@@ -241,7 +262,7 @@ class BostonTwin:
         )
         return ax
 
-    def plot_twin(self, basemap:bool=False) -> Axes:
+    def plot_twin(self, basemap: bool = False) -> Axes:
         """Plot the location of the antennas and the building footprint.
 
         Parameters
@@ -262,13 +283,13 @@ class BostonTwin:
         self,
         tx_antenna_ids: List[int],
         rx_antenna_ids: List[int],
-        tx_names: List[str]=[],
-        rx_names: List[str]=[],
-        tx_params: list=[],
-        rx_params: list=[],
+        tx_names: List[str] = [],
+        rx_names: List[str] = [],
+        tx_params: list = [],
+        rx_params: list = [],
     ) -> dict:
         """Add antennas to the current scene.
-        
+
         Parameters
         ----------
         tx_antenna_ids : List[int]
@@ -296,7 +317,9 @@ class BostonTwin:
             zip(tx_names, tx_antenna_ids)
         ):
             antenna_coords = list(
-                self.current_scene_antennas_localcrs.loc[tx_antenna_idx, "geometry"].coords[0]
+                self.current_scene_antennas_localcrs.loc[
+                    tx_antenna_idx, "geometry"
+                ].coords[0]
             )
             antenna_coords.append(self.node_height)
             if len(tx_params) > 0:
@@ -314,7 +337,9 @@ class BostonTwin:
             zip(rx_names, rx_antenna_ids)
         ):
             antenna_coords = list(
-                self.current_scene_antennas_localcrs.loc[rx_antenna_idx, "geometry"].coords[0]
+                self.current_scene_antennas_localcrs.loc[
+                    rx_antenna_idx, "geometry"
+                ].coords[0]
             )
             antenna_coords.append(self.node_height)
             if len(rx_params) > 0:
@@ -329,7 +354,12 @@ class BostonTwin:
         return nodes_dict
 
     def generate_scene_from_radius(
-        self, scene_name:str, center_lon:float, center_lat:float, side_m:float, load=False
+        self,
+        scene_name: str,
+        center_lon: float,
+        center_lat: float,
+        side_m: float,
+        load=False,
     ):
         """Generate a new scene specifying its center and radius.
 
@@ -367,6 +397,30 @@ class BostonTwin:
         if load:
             self.set_scene(scene_name)
 
+    def export_scene_antennas(self, out_path: Union[Path, str]):
+        """Export to file the location (in the local CRS) of the antennas in the current scene.
+
+        Parameters
+        ----------
+        out_path : Union[Path,str]
+            Path where to export the antenna location.
+        """
+        if not isinstance(out_path, Path):
+            out_path = Path(out_path)
+
+        if out_path.suffix.lower() != ".json":
+            raise ValueError("Currently, only JSON is supported as export format.")
+
+        if out_path.is_file():
+            raise FileExistsError(f"File {out_path} already exists!")
+
+        if not out_path.parent.is_dir():
+            raise FileNotFoundError(f"Directory {out_path.parent} not found!")
+
+        with open(out_path, "w") as f:
+            json.dump(self._node_pos_dict, f, indent=4)
+
+    # Static Methods
     @staticmethod
     def translate_gdf(gdf, xoff, yoff):
         gdf["geometry"] = gdf.translate(xoff=xoff, yoff=yoff)
