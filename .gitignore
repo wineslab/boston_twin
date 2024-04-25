@@ -172,3 +172,4 @@ data/*
 *.npy
 *.png
 *.json
+*/*.DS_Store

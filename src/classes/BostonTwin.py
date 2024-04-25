@@ -1,4 +1,5 @@
 import json
+import shutil
 import time
 from pathlib import Path
 from typing import List, Union
@@ -518,6 +519,43 @@ class BostonTwin:
 
         with open(out_path, "w") as f:
             json.dump(self._node_pos_dict, f, indent=4)
+
+    def export_scene_models(self, out_path: Union[Path,str]):
+        """Copy the scene files (`<scene_name>.xml`, `<scene_name>.geojson`, `<scene_name>_tileinfo.geojson`, and the corresponding PLY meshes) to `out_path`.
+        
+        Parameters
+        ----------
+        out_path : Union[Path,str]
+            Path where to export the antenna location.
+        """
+        if not isinstance(out_path, Path):
+            out_path = Path(out_path)
+
+        if out_path.suffix.lower() != "":
+            raise ValueError(f"out_path must point to a folder. Instead {out_path}")
+
+        if not out_path.is_dir():
+            out_path.mkdir(parents=True)
+
+        # scene XML
+        new_mi_scene_path = out_path.with_name(self.mi_scene_path.name)
+        shutil.copy(self.mi_scene_path, new_mi_scene_path)
+
+        # scene GeoJSON
+        new_geo_scene_path = out_path.with_name(self.geo_scene_path.name)
+        shutil.copy(self.geo_scene_path, new_geo_scene_path)
+
+        # scene tileinfo
+        new_tile_info_path = out_path.with_name(self.tile_info_path.name)
+        shutil.copy(self.tile_info_path, new_tile_info_path)
+
+        # copy meshes
+        new_mesh_path = out_path.joinpath("meshes")
+        new_mesh_path.mkdir(exist_ok=True, parents=True)
+        for mesh_id in self.boston_model.tiles_dict[self.scene_name]["models"]:
+            mesh_in_path = self.boston_model.mesh_dir.joinpath(mesh_id + ".ply")
+            mesh_out_path = self.new_mesh_path.joinpath(mesh_id + ".ply")
+            shutil.copy(mesh_in_path,mesh_out_path)
 
     # Static Methods
     @staticmethod
