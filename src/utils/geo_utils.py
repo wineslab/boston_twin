@@ -1,8 +1,10 @@
-import mitsuba as mi
-from .constants import FT2M_FACTOR
-import pyproj
 from pathlib import Path
+
 import contextily as cx
+import mitsuba as mi
+import pyproj
+
+from .constants import FT2M_FACTOR
 
 data_dir = Path(__file__).parents[2].joinpath("data")
 
@@ -85,7 +87,9 @@ def gdf2localcrs(in_coords_gdf):
     return out_coords_gdf_local_crs
 
 
-def plot_geodf(geodf, basemap: bool = False, title: str = "", **plot_kwargs):
+def plot_geodf(
+    geodf, basemap: bool = False, title: str = "", **plot_kwargs
+):
     ax = geodf.plot(**plot_kwargs)
     if basemap:
         cx.add_basemap(
@@ -100,9 +104,14 @@ def plot_geodf(geodf, basemap: bool = False, title: str = "", **plot_kwargs):
             source=cx.providers.CartoDB.VoyagerOnlyLabels,
             zoom=16,
         )
-    ax.set_xlabel("Longitude")
-    ax.set_ylabel("Latitude")
+    if "WGS 84" in geodf.crs.name:
+        ax.set_xlabel("Longitude")
+        ax.set_ylabel("Latitude")
+    else:
+        ax.set_xlabel("X [m]")
+        ax.set_ylabel("Y [m]")
+
     if title:
         ax.set_title(title)
-    
+
     return ax

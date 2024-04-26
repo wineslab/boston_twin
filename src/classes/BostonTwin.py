@@ -1,9 +1,11 @@
 import json
+import shutil
 import time
 from pathlib import Path
 from typing import List, Union
 
 import geopandas as gpd
+import matplotlib.pyplot as plt
 import mitsuba as mi
 import numpy as np
 import pyproj
@@ -44,6 +46,8 @@ class BostonTwin:
         Mitsuba Scene instance of the current scene.
     current_scene_antennas_localcrs : geopandas.GeoDataFrame
         GeoDataFrame containing the information on the antennas of the current scene.
+    current_scene_txrx_localcrs : geopandas.GeoDataFrame
+        GeoDataFrame containing the information on the transmitters and receivers of the current scene.
     node_height : float
         Height of the antennas of the scene. For now, all the antennas have the same height.
     txs: list
@@ -90,6 +94,7 @@ class BostonTwin:
         self.current_sionna_scene = None
         self.current_mi_scene = None
         self.current_scene_antennas_localcrs = None
+        self.current_scene_txrx_localcrs = None
 
         self.node_height = 10
         self.txs = []
@@ -103,10 +108,15 @@ class BostonTwin:
             )
 
     def _generate_node_pos_dict(self):
-        self._node_pos_dict = dict(zip(
-            self.current_scene_antennas_localcrs.index,
-            [{"x":c.coords[0][0],"y":c.coords[0][1]} for c in self.current_scene_antennas_localcrs.geometry],
-        ))
+        self._node_pos_dict = dict(
+            zip(
+                self.current_scene_antennas_localcrs.index,
+                [
+                    {"x": c.coords[0][0], "y": c.coords[0][1]}
+                    for c in self.current_scene_antennas_localcrs.geometry
+                ],
+            )
+        )
 
     def get_scene_names(self) -> List[str]:
         """Return the list of scene names currently present in BostonTwin. The files describing are found in the `self.dataset_dir` directory.
@@ -218,71 +228,152 @@ class BostonTwin:
     def get_mi_scene(self):
         return self.current_mi_scene
 
-    def plot_buildings(self, basemap: bool = False, **plot_kwargs) -> Axes:
+    def plot_buildings(
+        self, basemap: bool = False, local_crs: bool = False, **plot_kwargs
+    ) -> Axes:
         """Plot the buildings 2D footprint.
 
         Parameters
         ----------
         basemap : bool, optional
             Add a map as background. Defaults to False.
+        local_crs : bool, optional
+            Use the local Coordinate Reference System. Incompatible with basemap. Defaults to False.
 
         Returns
         -------
         ax : Axes
             Building footprint plot.
         """
+
+        if basemap and local_crs:
+            raise ValueError(
+                "'basemap' and 'local_crs' are currently incompatible. Please choose one."
+            )
+
         self.load_scene_geodf()
 
+        if local_crs:
+            plot_gdf = self.current_scene_gdf
+        else:
+            plot_gdf = self.current_scene_gdf_lonlat
+
         ax = plot_geodf(
-            self.current_scene_gdf_lonlat,
+            plot_gdf,
             basemap=basemap,
             title=self.current_scene_name,
             **plot_kwargs,
         )
         return ax
 
-    def plot_antennas(self, basemap: bool = False, **plot_kwargs) -> Axes:
+    def plot_antennas(
+        self,
+        basemap: bool = False,
+        local_crs: bool = False,
+        annotate: bool = False,
+        **plot_kwargs,
+    ) -> Axes:
         """Plot the location of the antennas in the current scene.
 
         Parameters
         ----------
         basemap : bool, optional
             Add a map as background. Defaults to False.
+        local_crs : bool, optional
+            Use the local Coordinate Reference System. Incompatible with basemap. Defaults to False.
+        annotate : bool, optional
+            Add annotation to map. Defaults to False.
 
         Returns
         -------
         ax : Axes
             Antenna location plot.
         """
+        if basemap and local_crs:
+            raise ValueError(
+                "'basemap' and 'local_crs' are currently incompatible. Please choose one."
+            )
+
+        if local_crs:
+            plot_gdf = self.current_scene_antennas_localcrs
+        else:
+            plot_gdf = self.scene_antennas_gdf_lonlat
+
         ax = plot_geodf(
-            self.scene_antennas_gdf_lonlat,
+            plot_gdf,
             basemap=basemap,
             title=self.current_scene_name,
             **plot_kwargs,
         )
+        if annotate:
+            for idx, row in plot_gdf.iterrows():
+                xy = row.geometry.centroid.coords[0]
+                format_coords = [f"{x:.1f}" for x in row.geometry.centroid.coords[0]]
+                ax.annotate(
+                    text=format_coords,
+                    xy=xy,
+                    horizontalalignment="center",
+                    verticalalignment="top",
+                    size=4,
+                    bbox=dict(
+                        facecolor=[1, 1, 1, 0.3],
+                        edgecolor="black",
+                        boxstyle="round,pad=2",
+                    ),
+                )
+                if self.current_scene_txrx_localcrs is not None:
+                    pole_ID_lonlat = row["Pole_Identifying_Number"]
+                    pole_ID_localcrs = self.current_scene_txrx_localcrs[
+                        "Pole_Identifying_Number"
+                    ]
+                    match_id = pole_ID_localcrs == pole_ID_lonlat
+                    name_text = self.current_scene_txrx_localcrs.loc[
+                        match_id, "Name"
+                    ].values[0]
+                else:
+                    name_text = f"idx-{idx}"
+
+                ax.annotate(
+                    text=name_text,
+                    xy=xy,
+                    horizontalalignment="center",
+                    verticalalignment="bottom",
+                    size=8,
+                )
+
         return ax
 
-    def plot_twin(self, basemap: bool = False) -> Axes:
+    def plot_twin(self, basemap: bool = False, local_crs : bool = False, annotate : bool = False, ax : plt.Axes = None) -> Axes:
         """Plot the location of the antennas and the building footprint.
 
         Parameters
         ----------
         basemap : bool, optional
             Add a map as background. Defaults to False.
+        local_crs : bool, optional
+            Use the local Coordinate Reference System. Incompatible with basemap. Defaults to False.
+        annotate : bool, optional
+            Add antenna location annotation to map. Defaults to False.
 
         Returns
         -------
         ax : Axes
             Plot of the antennas among the building 2D footprint.
         """
-        ax = self.plot_buildings(basemap=basemap, color="k")
-        ax = self.plot_antennas(basemap=False, ax=ax, color="r")
+
+        if basemap and local_crs:
+            raise ValueError(
+                "'basemap' and 'local_crs' are currently incompatible. Please choose one."
+            )
+
+        ax = self.plot_buildings(basemap=basemap, color="k", local_crs=local_crs, ax=ax)
+        ax = self.plot_antennas(basemap=False, ax=ax, color="r", local_crs=local_crs, annotate=annotate)
         return ax
 
     def add_scene_antennas(
         self,
-        tx_antenna_ids: List[int],
-        rx_antenna_ids: List[int],
+        tx_antenna_ids: Union[List[int], np.typing.ArrayLike],
+        rx_antenna_ids: Union[List[int], np.typing.ArrayLike],
         tx_names: List[str] = [],
         rx_names: List[str] = [],
         tx_params: list = [],
@@ -310,8 +401,16 @@ class BostonTwin:
         nodes_dict : dict
             Dictionary with the names of the Transmitters/Receivers as keys and the corresponding Sionna object as values.
         """
+        txrx_ids = np.concatenate([tx_antenna_ids, rx_antenna_ids])
+        self.current_scene_txrx_localcrs = self.current_scene_antennas_localcrs.loc[
+            txrx_ids, :
+        ]
+        self.current_scene_txrx_localcrs.loc[tx_antenna_ids, "TX/RX"] = "TX"
+        self.current_scene_txrx_localcrs.loc[rx_antenna_ids, "TX/RX"] = "RX"
+
         if not tx_names:
             tx_names = [f"TX_{i}" for i in range(len(tx_antenna_ids))]
+        self.current_scene_txrx_localcrs.loc[tx_antenna_ids, "Name"] = tx_names
 
         for tx_idx, (tx_name, tx_antenna_idx) in enumerate(
             zip(tx_names, tx_antenna_ids)
@@ -332,6 +431,7 @@ class BostonTwin:
 
         if not rx_names:
             rx_names = [f"RX_{i}" for i in range(len(rx_antenna_ids))]
+        self.current_scene_txrx_localcrs.loc[rx_antenna_ids, "Name"] = rx_names
 
         for rx_idx, (rx_name, rx_antenna_idx) in enumerate(
             zip(rx_names, rx_antenna_ids)
@@ -419,6 +519,43 @@ class BostonTwin:
 
         with open(out_path, "w") as f:
             json.dump(self._node_pos_dict, f, indent=4)
+
+    def export_scene_models(self, out_path: Union[Path,str]):
+        """Copy the scene files (`<scene_name>.xml`, `<scene_name>.geojson`, `<scene_name>_tileinfo.geojson`, and the corresponding PLY meshes) to `out_path`.
+        
+        Parameters
+        ----------
+        out_path : Union[Path,str]
+            Path where to export the antenna location.
+        """
+        if not isinstance(out_path, Path):
+            out_path = Path(out_path)
+
+        if out_path.suffix.lower() != "":
+            raise ValueError(f"out_path must point to a folder. Instead {out_path}")
+
+        if not out_path.is_dir():
+            out_path.mkdir(parents=True)
+
+        # scene XML
+        new_mi_scene_path = out_path.with_name(self.mi_scene_path.name)
+        shutil.copy(self.mi_scene_path, new_mi_scene_path)
+
+        # scene GeoJSON
+        new_geo_scene_path = out_path.with_name(self.geo_scene_path.name)
+        shutil.copy(self.geo_scene_path, new_geo_scene_path)
+
+        # scene tileinfo
+        new_tile_info_path = out_path.with_name(self.tile_info_path.name)
+        shutil.copy(self.tile_info_path, new_tile_info_path)
+
+        # copy meshes
+        new_mesh_path = out_path.joinpath("meshes")
+        new_mesh_path.mkdir(exist_ok=True, parents=True)
+        for mesh_id in self.boston_model.tiles_dict[self.scene_name]["models"]:
+            mesh_in_path = self.boston_model.mesh_dir.joinpath(mesh_id + ".ply")
+            mesh_out_path = self.new_mesh_path.joinpath(mesh_id + ".ply")
+            shutil.copy(mesh_in_path,mesh_out_path)
 
     # Static Methods
     @staticmethod
