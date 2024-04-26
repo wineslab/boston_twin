@@ -23,8 +23,8 @@ class BostonTwin:
 
     The BostonTwin class implements BostonTwin, the Boston Digital Twin for wireless communications.
     The class contains two main variables:
-        - `boston_model`, that includes a number of methods to access the 3D model of the structures in Boston (buildings, bridges, walls, etc..)
-        - `boston_antennas`, that includes the georeferenced locations to the wireless antennas in Boston
+    - `boston_model`, that includes a number of methods to access the 3D model of the structures in Boston (buildings, bridges, walls, etc..)
+    - `boston_antennas`, that includes the georeferenced locations to the wireless antennas in Boston
 
     Attributes
     ----------
@@ -58,24 +58,6 @@ class BostonTwin:
         Dictionary containing the position (in the local CRS) of the nodes in the current scene.
         The keys correspond to the node index in the current_scene_antennas_localcrs GeoDataFrame.
         The values are [x,y] vectors (local CRS).
-
-    Methods
-    -------
-    get_scene_names()
-        Return the list of scene names currently present in BostonTwin.
-    load_boston_twin(scene_name, load_sionna=True, load_mi_scene=False, load_geodf=False)
-        Load `scene_name` as the current scene. Choose among those listed by `get_scene_names()`,
-        or add a new one with the `generat_scene_from_radius()` method.
-    plot_buildings()
-        Plot the 2D footprint of the buildings in the current scene.
-    plot_antennas()
-        Plot the location of the wirelessa antennas in the current scene.
-    plot_twin()
-        Combine `plot_antennas()` and `plot_buildings()`
-    add_scene_antennas(tx_antenna_ids, rx_antenna_ids, tx_names=[], rx_names=[], tx_params=[], rx_params=[])
-        Add the specified Transmitters and Receivers to the Sionna scene.
-    generate_scene_from_radius()
-        Generate a new scene specifying its center and radius.
     """
 
     def __init__(
