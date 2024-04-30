@@ -4,11 +4,12 @@
 Repository for the BostonTwin dataset API.
 
 ## Requirements
-The basic requirements for the BostonTwin API are based on those of [Sionna]<https://nvlabs.github.io/sionna/>, plus some georeferencing libraries:
+The basic requirements for the BostonTwin API are based on those of [Sionna](<https://nvlabs.github.io/sionna/>), plus some georeferencing libraries:
 1. `python>=3.8`
 2. `geopandas`
 3. `open3d`
 4. `contextily`
+
 and the corresponding dependencies.
 
 We provide a requirement file for pip (`requirements.txt`) and conda (`environment.yaml`) to create a Python virtual environment with all the dependencies.
@@ -16,10 +17,12 @@ Additionally, we provide a DOCKERFILE to generate a container with all the requi
 
 ## Quickstart
 1. Clone this repo
-2. Install the requirements. We suggest using the provided DOCKERFILE.
-3. Download the BostonTwin dataset from <http://hdl.handle.net/2047/D20623157> into the `bostontwin` folder.
+2. Download the BostonTwin dataset from <http://hdl.handle.net/2047/D20623157> into the `bostontwin` folder.
+3. Install the requirements. We suggest using the provided DOCKERFILE:
+    a. From the boston_twin directory, run `docker build -t bostontwin -f DOCKERFILE .`
+    b. Run the container binding the boston_twin directory to the container: `docker run --privileged=true --gpus=all --mount type=bind,src=".",target="/home/root/boston_twin" --env NVIDIA_DRIVER_CAPABILITIES=graphics,compute,utility --rm -it boston_twin`
 4. Run the [bostontwin_demo](<https://github.com/wineslab/boston_twin/blob/main/bostontwin_demo.ipynb>) Jupyter Notebook to see how to use BostonTwin, the Digital Twin of Boston!
-5. Refer to the [documentation](<>) for additional information.
+5. Refer to the [documentation](<https://wineslab.github.io/boston_twin/src/classes/BostonTwin.html>) for additional information.
 
 ## Workflow
 

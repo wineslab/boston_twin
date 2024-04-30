@@ -74,9 +74,9 @@ class BostonTwin:
         self.current_scene_name = ""
         self.current_scene_gdf = None
         self.current_sionna_scene = None
-        self.current_mi_scene = None
-        self.current_scene_antennas_localcrs = None
-        self.current_scene_txrx_localcrs = None
+        self._current_mi_scene = None
+        self._current_scene_antennas_localcrs = None
+        self._current_scene_txrx_localcrs = None
 
         self.node_height = 10
         self.txs = []
@@ -92,10 +92,10 @@ class BostonTwin:
     def _generate_node_pos_dict(self):
         self._node_pos_dict = dict(
             zip(
-                self.current_scene_antennas_localcrs.index,
+                self._current_scene_antennas_localcrs.index,
                 [
                     {"x": c.coords[0][0], "y": c.coords[0][1]}
-                    for c in self.current_scene_antennas_localcrs.geometry
+                    for c in self._current_scene_antennas_localcrs.geometry
                 ],
             )
         )
@@ -134,11 +134,11 @@ class BostonTwin:
             "mi_scene_path"
         ]
 
-    def load_mi_scene(self):
+    def _load_mi_scene(self):
         self._check_scene()
-        self.current_mi_scene = mi.load_file(str(self.mi_scene_path.resolve()))
+        self._current_mi_scene = mi.load_file(str(self.mi_scene_path.resolve()))
 
-    def load_scene_geodf(self):
+    def _load_scene_geodf(self):
         self._check_scene()
         self.geo_scene_path = self.boston_model.tiles_dict[self.current_scene_name][
             "geo_scene_path"
@@ -153,7 +153,7 @@ class BostonTwin:
             yoff=-self.current_scene_center[1],
         )
 
-    def load_antennas(self):
+    def _load_antennas(self):
         self._check_scene()
         self.scene_antennas_gdf_lonlat = (
             self.boston_antennas.get_antenna_location_from_gdf(
@@ -161,11 +161,14 @@ class BostonTwin:
             )
         )
         scene_antennas_gdf_localcrs = gdf2localcrs(self.scene_antennas_gdf_lonlat)
-        self.current_scene_antennas_localcrs = self.translate_gdf(
+        self._current_scene_antennas_localcrs = self.translate_gdf(
             scene_antennas_gdf_localcrs,
             xoff=-self.current_scene_center[0],
             yoff=-self.current_scene_center[1],
         )
+
+    def _get_mi_scene(self):
+        return self._current_mi_scene
 
     def load_bostontwin(
         self, scene_name: str, load_sionna=True, load_mi_scene=False, load_geodf=False
@@ -192,7 +195,7 @@ class BostonTwin:
         """
         self.set_scene(scene_name)
 
-        self.load_antennas()
+        self._load_antennas()
 
         self._generate_node_pos_dict()
 
@@ -200,15 +203,12 @@ class BostonTwin:
             self.current_sionna_scene = load_scene(str(self.mi_scene_path))
 
         if load_mi_scene:
-            self.load_mi_scene()
+            self._load_mi_scene()
 
         if load_geodf:
-            self.current_scene_gdf = self.load_scene_geodf(scene_name)
+            self.current_scene_gdf = self._load_scene_geodf(scene_name)
 
-        return self.current_sionna_scene, self.current_scene_antennas_localcrs
-
-    def get_mi_scene(self):
-        return self.current_mi_scene
+        return self.current_sionna_scene, self._current_scene_antennas_localcrs
 
     def plot_buildings(
         self, basemap: bool = False, local_crs: bool = False, **plot_kwargs
@@ -233,7 +233,7 @@ class BostonTwin:
                 "'basemap' and 'local_crs' are currently incompatible. Please choose one."
             )
 
-        self.load_scene_geodf()
+        self._load_scene_geodf()
 
         if local_crs:
             plot_gdf = self.current_scene_gdf
@@ -277,7 +277,7 @@ class BostonTwin:
             )
 
         if local_crs:
-            plot_gdf = self.current_scene_antennas_localcrs
+            plot_gdf = self._current_scene_antennas_localcrs
         else:
             plot_gdf = self.scene_antennas_gdf_lonlat
 
@@ -303,13 +303,13 @@ class BostonTwin:
                         boxstyle="round,pad=2",
                     ),
                 )
-                if self.current_scene_txrx_localcrs is not None:
+                if self._current_scene_txrx_localcrs is not None:
                     pole_ID_lonlat = row["Pole_Identifying_Number"]
-                    pole_ID_localcrs = self.current_scene_txrx_localcrs[
+                    pole_ID_localcrs = self._current_scene_txrx_localcrs[
                         "Pole_Identifying_Number"
                     ]
                     match_id = pole_ID_localcrs == pole_ID_lonlat
-                    name_text = self.current_scene_txrx_localcrs.loc[
+                    name_text = self._current_scene_txrx_localcrs.loc[
                         match_id, "Name"
                     ].values[0]
                 else:
@@ -384,21 +384,21 @@ class BostonTwin:
             Dictionary with the names of the Transmitters/Receivers as keys and the corresponding Sionna object as values.
         """
         txrx_ids = np.concatenate([tx_antenna_ids, rx_antenna_ids])
-        self.current_scene_txrx_localcrs = self.current_scene_antennas_localcrs.loc[
+        self._current_scene_txrx_localcrs = self._current_scene_antennas_localcrs.loc[
             txrx_ids, :
         ]
-        self.current_scene_txrx_localcrs.loc[tx_antenna_ids, "TX/RX"] = "TX"
-        self.current_scene_txrx_localcrs.loc[rx_antenna_ids, "TX/RX"] = "RX"
+        self._current_scene_txrx_localcrs.loc[tx_antenna_ids, "TX/RX"] = "TX"
+        self._current_scene_txrx_localcrs.loc[rx_antenna_ids, "TX/RX"] = "RX"
 
         if not tx_names:
             tx_names = [f"TX_{i}" for i in range(len(tx_antenna_ids))]
-        self.current_scene_txrx_localcrs.loc[tx_antenna_ids, "Name"] = tx_names
+        self._current_scene_txrx_localcrs.loc[tx_antenna_ids, "Name"] = tx_names
 
         for tx_idx, (tx_name, tx_antenna_idx) in enumerate(
             zip(tx_names, tx_antenna_ids)
         ):
             antenna_coords = list(
-                self.current_scene_antennas_localcrs.loc[
+                self._current_scene_antennas_localcrs.loc[
                     tx_antenna_idx, "geometry"
                 ].coords[0]
             )
@@ -413,13 +413,13 @@ class BostonTwin:
 
         if not rx_names:
             rx_names = [f"RX_{i}" for i in range(len(rx_antenna_ids))]
-        self.current_scene_txrx_localcrs.loc[rx_antenna_ids, "Name"] = rx_names
+        self._current_scene_txrx_localcrs.loc[rx_antenna_ids, "Name"] = rx_names
 
         for rx_idx, (rx_name, rx_antenna_idx) in enumerate(
             zip(rx_names, rx_antenna_ids)
         ):
             antenna_coords = list(
-                self.current_scene_antennas_localcrs.loc[
+                self._current_scene_antennas_localcrs.loc[
                     rx_antenna_idx, "geometry"
                 ].coords[0]
             )
