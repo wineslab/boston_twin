@@ -21,7 +21,7 @@ Additionally, we provide a DOCKERFILE to generate a container with all the requi
 3. Install the requirements. We suggest using the provided DOCKERFILE:
     a. From the boston_twin directory, run `docker build -t bostontwin -f DOCKERFILE .`
     b. Run the container binding the boston_twin directory to the container:
-    `docker run --privileged=true --gpus=all --mount type=bind,src=".",target="/home/root/boston_twin" --env NVIDIA_DRIVER_CAPABILITIES=graphics,compute,utility --rm -it boston_twin`
+    `docker run --privileged=true --gpus=all --mount type=bind,src=".",target="/home/root/boston_twin" --env NVIDIA_DRIVER_CAPABILITIES=graphics,compute,utility --rm -it bostontwin`
 4. Run the [bostontwin_demo](<https://github.com/wineslab/boston_twin/blob/main/bostontwin_demo.ipynb>) Jupyter Notebook to see how to use BostonTwin, the Digital Twin of Boston!
 5. Refer to the [documentation](<https://wineslab.github.io/boston_twin/src/classes/BostonTwin.html>) for additional information.
 
