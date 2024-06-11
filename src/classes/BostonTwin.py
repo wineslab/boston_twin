@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import mitsuba as mi
 import numpy as np
 import pyproj
+from collada import Collada, geometry, material, scene, source
 from matplotlib.axes import Axes
 from sionna.rt import Receiver, Transmitter, load_scene
 
@@ -133,6 +134,8 @@ class BostonTwin:
         self.mi_scene_path = self.boston_model.tiles_dict[self.current_scene_name][
             "mi_scene_path"
         ]
+
+        self._load_antennas()
 
     def _load_mi_scene(self):
         self._check_scene()
@@ -538,6 +541,60 @@ class BostonTwin:
             mesh_in_path = self.boston_model.mesh_dir.joinpath(mesh_id + ".ply")
             mesh_out_path = self.new_mesh_path.joinpath(mesh_id + ".ply")
             shutil.copy(mesh_in_path,mesh_out_path)
+
+    def export_scene_collada(self, out_path: Union[Path,str]):
+        if not out_path.is_dir():
+            if out_path.suffix.lower() != "":
+                raise ValueError(f"out_path must point to a folder. Instead {out_path}")
+            Warning(f"Directory {out_path} not found. Creating it.")
+            out_path.mkdir(parents=True)
+        # Load the mitsuba mesh
+        if self._current_mi_scene is None:
+            self._load_mi_scene()
+
+        for mi_mesh in self._current_mi_scene.shapes():
+            mi_mesh_id = mi_mesh.id()
+            print(mi_mesh_id)
+            mi_mesh_params = mi.traverse(mi_mesh)
+            mi_vertices = mi_mesh_params["vertex_positions"]
+            mi_vertices = np.array(mi_vertices, dtype=np.float32).reshape(-1, 3)
+            mi_vertices[:, [1,2]] = mi_vertices[:, [2,1]]
+            mi_vertices[:, 2] = -mi_vertices[:, 2]
+            print(mi_vertices[:10,:])
+            mi_faces = np.array(mi_mesh_params["faces"],dtype=np.int32).reshape(-1, 3)
+            # mi_normals = estimate_normals(mi_vertices, mi_faces)
+            mi_material = mi_mesh.bsdf().id()
+            # mi_material_ref = mi_mesh.bsdf()
+            vert_src = source.FloatSource("vertices", mi_vertices, ("X", "Y", "Z"))
+            # normal_src = source.FloatSource("normals", mi_normals, ('X', 'Y', 'Z'))
+
+            # Create a new Collada object
+            mesh = Collada()
+            effect = material.Effect("effect", [], "phong", diffuse=(1, 0, 0), specular=(0, 1, 0))
+            mat = material.Material(mi_material, mi_material, effect=effect)
+            mesh.materials.append(mat)
+
+            geom = geometry.Geometry(mesh, "geometry", mi_mesh_id, [vert_src])  # , normal_src])
+
+            input_list = source.InputList()
+            input_list.addInput(0, "VERTEX", "#vertices")
+            # input_list.addInput(1, "NORMAL", "#normals")
+
+            triset = geom.createTriangleSet(mi_faces, input_list, "materialref")
+            geom.primitives.append(triset)
+            mesh.geometries.append(geom)
+
+            matnode = scene.MaterialNode("materialref", mat, inputs=[])
+            geomnode = scene.GeometryNode(geom, [matnode])
+            node = scene.Node(mi_mesh_id, children=[geomnode])
+
+        current_collada_scene = scene.Scene(self.current_scene_name, [node])
+        mesh.scenes.append(current_collada_scene)
+        mesh.scene = current_collada_scene
+
+        out_file = out_path.joinpath(self.current_scene_name + ".dae")
+        print(f"Writing Collada file to {out_file}")
+        mesh.write(out_file)
 
     # Static Methods
     @staticmethod

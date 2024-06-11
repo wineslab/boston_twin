@@ -1,15 +1,20 @@
-import geopandas as gpd
-from typing import Union
 from pathlib import Path
+from typing import Union
+
+import geopandas as gpd
+
 from src.utils.geo_utils import gdf2localcrs
 
 
 class BostonAntennas:
-    def __init__(self, dataset_dir: Union[str, Path]) -> None:
+
+    def __init__(
+        self, dataset_dir: Union[str, Path], antennas_filename: str = "antennas.geojson"
+    ) -> None:
         if isinstance(dataset_dir,str):
             dataset_dir = Path(dataset_dir)
         self.dataset_dir = dataset_dir
-        self.antennas_path = dataset_dir.joinpath("antennas.geojson")
+        self.antennas_path = dataset_dir.joinpath(antennas_filename)
 
         self.antenna_gdf_epsg4326 = gpd.read_file(self.antennas_path)  # crs="epsg:4326"
         # translate to the BDPA reference system
