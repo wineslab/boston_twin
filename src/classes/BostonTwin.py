@@ -91,15 +91,33 @@ class BostonTwin:
             )
 
     def _generate_node_pos_dict(self):
-        self._node_pos_dict = dict(
-            zip(
-                self._current_scene_antennas_localcrs.index,
-                [
-                    {"x": c.coords[0][0], "y": c.coords[0][1]}
-                    for c in self._current_scene_antennas_localcrs.geometry
-                ],
-            )
-        )
+        if "timestamp" in self._current_scene_txrx_localcrs.columns:
+            times = self._current_scene_txrx_localcrs["timestamp"].values.unique()
+        else:
+            self._current_scene_txrx_localcrs["timestamp"] = 0
+            times = [0]
+        if "node_id" not in self._current_scene_txrx_localcrs.columns:
+            self._current_scene_txrx_localcrs["id"] = self._current_scene_txrx_localcrs.index
+
+        self._node_pos_dict = {}
+        for t in times:
+            t_rows = self._current_scene_txrx_localcrs["timestamp"] == t
+
+            rx_rows = self._current_scene_txrx_localcrs.loc[
+                t_rows, self._current_scene_txrx_localcrs["TX/RX"] == "RX"
+            ]
+            rx_ids = rx_rows["id"].values
+            rx_pos = rx_rows["id","geometry"].coords
+            t_dict = {}
+            t_dict["rx"] = dict(zip(rx_ids, rx_pos))
+
+            tx_rows = self._current_scene_txrx_localcrs.loc[
+                t_rows, self._current_scene_txrx_localcrs["TX/RX"] == "TX"
+            ]
+            tx_ids = tx_rows["id"].values
+            tx_pos = tx_rows["id","geometry"].coords
+            t_dict["tx"] = dict(zip(tx_ids, tx_pos))
+            self._node_pos_dict[t] = t_dict
 
     def get_scene_names(self) -> List[str]:
         """Return the list of scene names currently present in BostonTwin. The files describing are found in the `self.dataset_dir` directory.
@@ -199,8 +217,6 @@ class BostonTwin:
         self.set_scene(scene_name)
 
         self._load_antennas()
-
-        self._generate_node_pos_dict()
 
         if load_sionna:
             self.current_sionna_scene = load_scene(str(self.mi_scene_path))
@@ -435,8 +451,9 @@ class BostonTwin:
             self.current_sionna_scene.add(rx)
             self.rxs.append(rx)
 
-        nodes_dict = dict(zip(tx_names + rx_names, self.txs + self.rxs))
-        return nodes_dict
+        # nodes_dict = dict(zip(tx_names + rx_names, self.txs + self.rxs))
+        self._generate_node_pos_dict()
+        return self._node_pos_dict
 
     def generate_scene_from_radius(
         self,
