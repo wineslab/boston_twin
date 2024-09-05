@@ -17,7 +17,7 @@ Additionally, we provide a DOCKERFILE to generate a container with all the requi
 
 ## Quickstart
 1. Clone this repo
-2. Download the BostonTwin dataset from <http://hdl.handle.net/2047/D20623157> into the `bostontwin` folder.
+2. Download the BostonTwin dataset from <https://repository.library.northeastern.edu/files/neu:h989t1201> into the `bostontwin` folder.
 3. Install the requirements. We suggest using the provided DOCKERFILE:
     a. From the boston_twin directory, run `docker build -t bostontwin -f DOCKERFILE .`
     b. Run the container binding the boston_twin directory to the container:
