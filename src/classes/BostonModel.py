@@ -1,14 +1,25 @@
+import time
 from pathlib import Path
 from typing import Union
-from ..utils.constants import LOCAL_CRS_ORIGIN_GEO, LOCAL_CRS_ORIGIN_STATE
-from ..utils.obj_utils import create_ground, get_mi_dict
-from ..utils.geo_utils import gdf2localcrs
 
-import mitsuba as mi
-import open3d as o3d
 import geopandas as gpd
+import mitsuba as mi
+
+try:
+    import open3d as o3d
+except:
+    print("open3d not available")
 import shapely as shp
-import time
+
+from ..utils.constants import LOCAL_CRS_ORIGIN_GEO, LOCAL_CRS_ORIGIN_STATE
+from ..utils.geo_utils import gdf2crs
+from ..utils.obj_utils import create_ground, get_mi_dict
+
+try:
+    mi.set_variant("llvm_ad_rgb")
+except:
+    mi.set_variant("scalar_rgb")
+
 
 class BostonModel:
     def __init__(
@@ -198,12 +209,14 @@ class BostonModel:
                 },
             },
         }
-        scene_center_local = gdf2localcrs(gpd.GeoDataFrame(geometry=[shp.Point(scene_center)],crs="epsg:4326"))
+        scene_center_local = gdf2crs(
+            gpd.GeoDataFrame(geometry=[shp.Point(scene_center)], crs="epsg:4326")
+        )
         scene_center_local = scene_center_local["geometry"].values[0]
         scene_center_local = [c for c in scene_center_local.coords][0]
         print(scene_center_local)
 
-        model_gdf = gdf2localcrs(model_gdf)
+        model_gdf = gdf2crs(model_gdf)
         xmin, ymin, xmax, ymax = model_gdf.total_bounds
         scene_size = xmax-xmin
         print(f"Scene size is {scene_size:.2f}x{scene_size:.2f} m.")

@@ -19,6 +19,9 @@ class BostonAntennas:
         self.antenna_gdf_epsg4326 = gpd.read_file(self.antennas_path)  # crs="epsg:4326"
         # translate to the BDPA reference system
         self.antenna_gdf_local_crs = gdf2localcrs(self.antenna_gdf_epsg4326)
+        if "timestamp" not in self.antenna_gdf_local_crs.columns:
+            self.antenna_gdf_local_crs["timestamp"] = 0
+        self.timestamps = self.antenna_gdf_local_crs["timestamp"].values
 
     def get_antenna_location_from_gdf(self, scene_gdf):
         if "WGS 84" not in scene_gdf.crs.name:
