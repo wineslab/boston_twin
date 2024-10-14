@@ -13,7 +13,7 @@ from collada import Collada, geometry, material, scene, source
 from matplotlib.axes import Axes
 from sionna.rt import load_scene
 
-from src.utils.geo_utils import (
+from bostontwin.utils.geo_utils import (
     check_area_of_use,
     check_point_in_area_of_use,
     gdf2crs,

@@ -3,7 +3,7 @@ from typing import Union
 
 import geopandas as gpd
 
-from src.utils.geo_utils import gdf2localcrs
+from bostontwin.utils.geo_utils import gdf2localcrs
 
 
 class BostonAntennas:

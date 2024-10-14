@@ -172,121 +172,45 @@ class BostonModel:
             crs="epsg:4326"
         )
 
-        scene_dict_mi = {
-            "type": "scene",
-            "integrator": {
-                "type": "path",
-            },
-            "light": {"type": "constant"},
-            "mat-itu_brick": {
-                "type": "twosided",
-                "bsdf": {
-                    "type": "diffuse",
-                    "reflectance": {
-                        "type": "rgb",
-                        "value": [0.401968, 0.111874, 0.086764],
-                    },
-                },
-            },
-            "mat-itu_concrete": {
-                "type": "twosided",
-                "bsdf": {
-                    "type": "diffuse",
-                    "reflectance": {
-                        "type": "rgb",
-                        "value": [0.539479, 0.539479, 0.539480],
-                    },
-                },
-            },
-            "mat-itu_medium_dry_ground": {
-                "type": "twosided",
-                "bsdf": {
-                    "type": "diffuse",
-                    "reflectance": {
-                        "type": "rgb",
-                        "value": [65 / 255, 60 / 255, 60 / 255],
-                    },
-                },
-            },
-        }
-        scene_center_local = gdf2crs(
-            gpd.GeoDataFrame(geometry=[shp.Point(scene_center)], crs="epsg:4326")
-        )
-        scene_center_local = scene_center_local["geometry"].values[0]
-        scene_center_local = [c for c in scene_center_local.coords][0]
-        print(scene_center_local)
+        scene_crs = get_crs(scene_name=scene_name,
+                            scene_center_lon_lat=[scene_center["center_lon"], scene_center["center_lat"]])
+        scene_transformer = Transformer.from_crs("EPSG:4326", scene_crs, always_xy=True)
+        with open(model_dir.parent.joinpath(f"{scene_name}.wkt"), "w") as f:
+            f.write(scene_crs.to_wkt(output_axis_rule=True))
 
         model_gdf = gdf2crs(model_gdf)
         xmin, ymin, xmax, ymax = model_gdf.total_bounds
-        scene_size = xmax-xmin
+        scene_size_x = xmax-xmin
+        scene_size_y = ymax-ymin
         print(f"Scene size is {scene_size:.2f}x{scene_size:.2f} m.")
-
-        # load frame obj and use it as (flat) ground
-        frame_name = f"{scene_name}_Frame"
-        base_rect_path = meshes_path.joinpath("rectangle.ply")
-        frame_material = "mat-itu_medium_dry_ground"
-        out_model_dict, _ = create_ground(
-            frame_material,
-            0,
-            0,
-            0,
-            scene_size/2+100,  # slightly increase the boundary
-            base_rect_path,
-            meshes_path.joinpath(frame_name + ".ply"),
-            self.dataset_dir,
-        )
 
         model_dict = out_model_dict.copy()
 
         scene_dict_mi["ground"] = model_dict
 
         model_gdf["center"] = model_gdf.centroid
-        n_tri_list = []
+        
         n_models_scene = model_gdf.shape[0]
-        for _, model_row in model_gdf.iterrows():
-            if model_row["Status"] != "Current":
-                continue
-            if not model_row["Gnd_El_Ft"]:
-                continue
-            t0 = time.time()
-            model_name = model_row["Model_ID"]
-            model_mesh_path = meshes_path.joinpath(model_name).with_suffix(".ply")
-            if not model_mesh_path.is_file():
-                continue
+        
+        model_list = model_gdf["Model_ID"].tolist()
+        model_materials = model_gdf["StructType"].apply(lambda x: "mat-itu_brick" if "Wall" in x else "mat-itu_concrete").tolist()
+        model_centers = model_gdf.centroid.apply(lambda x:scene_transformer.transform(x)).tolist()
 
-            model_struct_type = model_row["StructType"]
-            if model_struct_type == "Wall":
-                model_material = "mat-itu_brick"
-            else:
-                model_material = "mat-itu_concrete"
-
-            center_coords = [c for c in model_row["center"].coords]
-            center_x = center_coords[0][0]
-            center_y = center_coords[0][1]
-            out_model_dict, n_tri = get_mi_dict(
-                model_mesh_path, -center_x, -center_y, 0, out_scene_path, model_material
-            )
-            n_tri_list.append(n_tri)
-
-            # add model to the scene
-            scene_model_dict = out_model_dict.copy()
-            scene_model_dict["to_world"] = scene_model_dict[
-                "to_world"
-            ] @ mi.ScalarTransform4f.translate(
-                [-scene_center_local[0], -scene_center_local[1], 0]
-            )
-            scene_dict_mi[model_name] = scene_model_dict
-
-        scene_n_tri = sum(n_tri_list)
-
-        mi.xml.dict_to_xml(scene_dict_mi, str(output_scene_path.resolve()))
-
+        generate_mi_xml(
+            scene_name=scene_name,
+            models_list=model_list,
+            models_dir=model_dir,
+            out_dir=self.out_dataset_dir,
+            models_materials=models_materials,
+            models_center=models_centers,
+            create_ground=True,
+            ground_size= max(scene_size_x,scene_size_y)
+        )
         tile_info["Centr_X_m"] = scene_center_local[0]
         tile_info["Centr_Y_m"] = scene_center_local[1]
         tile_info["Centr_lon"] = scene_center[0]
         tile_info["Centr_lat"] = scene_center[1]
         tile_info["n_models"] = n_models_scene
-        tile_info["n_triangles"] = scene_n_tri
         tile_info.to_file(output_scene_info_path, driver="GeoJSON")
 
         print(

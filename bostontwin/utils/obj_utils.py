@@ -4,14 +4,15 @@ import mitsuba as mi
 import numpy as np
 import open3d as o3d
 
-from src.utils.constants import FT2M_FACTOR
+from bostontwin.utils.constants import FT2M_FACTOR
 
 
-def dir_obj2ply(obj_dir, ply_dir, recursive=True, kwargs={}):
+def dir_obj2ply(obj_dir, ply_dir, recursive=True, **kwargs):
     obj_list = list(obj_dir.glob("**/*.obj")) if recursive else list(obj_dir.glob("*.obj"))
     for obj_path in obj_list:
         ply_path = ply_dir.joinpath(obj_path.stem + ".ply")
-        obj2ply(obj_path, ply_path, **kwargs)
+        if not ply_path.is_file():
+            obj2ply(obj_path, ply_path, **kwargs)
 
 def get_mi_dict(
     model_material,
@@ -103,7 +104,7 @@ def obj2ply(obj_path, ply_path, ft2m=True, center=True):
     return mesh_trans, mesh_n_tri
 
 
-def create_ground(
+def create_ground_dict(
     model_material,
     x_shift,
     y_shift,

@@ -10,14 +10,13 @@ import numpy as np
 import pandas as pd
 import pyproj
 import requests
+import shapely as shp
 from pyproj.transformer import Transformer
-from shapely import wkb
 from shapely.geometry import box
 
-from src.utils.constants import FT2M_FACTOR
-from src.utils.geo_utils import check_area_of_use, gdf2crs, get_crs
-from src.utils.obj_utils import create_ground, get_mi_dict, obj2ply
-from src.utils.utils import print_eta, truncate_utf8_chars
+from bostontwin.utils.geo_utils import check_area_of_use, gdf2crs, get_crs
+from bostontwin.utils.obj_utils import dir_obj2ply
+from bostontwin.utils.utils import generate_mi_xml, print_eta, truncate_utf8_chars
 
 mi.set_variant("scalar_rgb")
 
@@ -271,17 +270,16 @@ class BostonModelDownloader:
 
         return tiles_dict
 
-
     def generate_dataset(self, create_xml) -> None:
-        out_model_dir = self.out_dataset_dir.joinpath("meshes")
-        if not out_model_dir.is_dir():
-            out_model_dir.mkdir(exist_ok=True, parents=True)
+        model_dir = self.out_dataset_dir.joinpath("meshes")
+        if not model_dir.is_dir():
+            model_dir.mkdir(exist_ok=True, parents=True)
             
-        # # convert all the obj files to ply
-        # t0 = time.perf_counter()
-        # dir_obj2ply(self.in_model_dir, out_model_dir, ft2m=True, center=True)
-        # t1 = time.perf_counter()
-        # print(f"Converted all OBJ files to PLY in {t1-t0:.2f} s.")
+        # convert all the obj files to ply
+        t0 = time.perf_counter()
+        dir_obj2ply(self.in_model_dir, model_dir, recursive=True, ft2m=True, center=True)
+        t1 = time.perf_counter()
+        print(f"Converted all OBJ files to PLY in {t1-t0:.2f} s.")
 
         # scenes are imported and converted to lon lat crs (epsg:4326) by default
         times = []
@@ -323,7 +321,6 @@ class BostonModelDownloader:
             },
         }
         for tile_idx, (tile_name, tile_dict) in enumerate(self.tiles_dict.items()):
-
             if tile_name == "boston":
                 continue
             t0 = time.perf_counter()
@@ -338,90 +335,30 @@ class BostonModelDownloader:
             ):
                 continue
 
-            tile_mitsuba_scene_dict = {
-                "type": "scene",
-                "integrator": {
-                    "type": "path",
-                },
-                "light": {"type": "constant"},
-                "mat-itu_brick": {
-                    "type": "twosided",
-                    "bsdf": {
-                        "type": "diffuse",
-                        "reflectance": {
-                            "type": "rgb",
-                            "value": [0.401968, 0.111874, 0.086764],
-                        },
-                    },
-                },
-                "mat-itu_concrete": {
-                    "type": "twosided",
-                    "bsdf": {
-                        "type": "diffuse",
-                        "reflectance": {
-                            "type": "rgb",
-                            "value": [0.539479, 0.539479, 0.539480],
-                        },
-                    },
-                },
-                "mat-itu_medium_dry_ground": {
-                    "type": "twosided",
-                    "bsdf": {
-                        "type": "diffuse",
-                        "reflectance": {
-                            "type": "rgb",
-                            "value": [65 / 255, 60 / 255, 60 / 255],
-                        },
-                    },
-                },
-            }
-
             tile_model_catalog_path = tile_dict["tile_catalog_path"]
             tile_model_catalog_gdf = gpd.GeoDataFrame.from_file(
                 tile_model_catalog_path
             )
             tile_model_catalog_gdf = tile_model_catalog_gdf.to_crs("epsg:4326")
 
-            mesh_dir = tile_model_catalog_path.parent
-
-            _drop_z = lambda geom: wkb.loads(wkb.dumps(geom, output_dimension=2))
-            tile_model_catalog_gdf.geometry = tile_model_catalog_gdf.geometry.transform(_drop_z)
-            n_models_tile = -1
-            tile_n_tri = 0
+            # drop the z coordinate from the geodataframe for faster processing 
+            tile_model_catalog_gdf.geometry = tile_model_catalog_gdf.geometry.apply(
+                lambda x: shp.force_2d(x)
+            )
             if create_xml:
                 # define CRS for the tile
                 tile_crs = get_crs(scene_name=tile_name,
                                    scene_center_lon_lat=[tile_dict["center_lon"], tile_dict["center_lat"]])
                 tile_transformer = Transformer.from_crs(self.local_crs_lonlat, tile_crs, always_xy=True)
-                with open(out_model_dir.parent.joinpath(f"{tile_name}.wkt"), "w") as f:
+                with open(model_dir.parent.joinpath(f"{tile_name}.wkt"), "w") as f:
                     f.write(tile_crs.to_wkt(output_axis_rule=True))
 
-                # load frame obj and use it as (flat) ground
-                frame_name = f"{tile_name}_terrain_flat"
-                base_rect_path = self.in_model_dir.parent.joinpath("rectangle.ply")
-                frame_material = "mat-itu_medium_dry_ground"
-                out_model_dict, _ = create_ground(
-                    frame_material,
-                    0,
-                    0,
-                    0,
-                    FT2M_FACTOR
-                    * 2650,  # tile size is 5000 ft x 5000 ft, we increase it a bit
-                    base_rect_path.resolve(),
-                    out_model_dir.joinpath(frame_name + ".ply"),
-                    self.out_dataset_dir,
-                )
-                tile_model_dict = out_model_dict.copy()
-                tile_mitsuba_scene_dict["ground"] = out_model_dict
-
-                # enumerate the models in the tile
+                # enumerate the models in the tile, prepare the structure for the XML, and check the data consistency
                 model_list = tile_dict["model_list"]
-                n_tri_list = []
+                models_materials = []
+                models_centers = []
                 n_models_tile = 0
                 for model_name in model_list:
-                    in_model_path = mesh_dir.joinpath(model_name).with_suffix(".obj")
-                    out_model_path = out_model_dir.joinpath(model_name).with_suffix(".ply")
-
                     ## There are two sources of model information: the geojson catalog and the info.json file
                     # The catalog is a geojson file with the model information for all models in the tile
                     # The info.json file is a json file with the model information for a single model
@@ -433,7 +370,9 @@ class BostonModelDownloader:
                     ]
 
                     # read model info from info.json
-                    model_info_path = in_model_path.parent.joinpath(model_name + ".json")
+                    model_info_path = tile_model_catalog_path.parent.joinpath(
+                        model_name + ".json"
+                    )
                     with open(model_info_path, "r") as f:
                         model_info_from_json = json.load(f)[0]
 
@@ -444,70 +383,38 @@ class BostonModelDownloader:
                         model_name=model_name,
                     ):
                         continue
-
+                    
                     ## Choose the model material. For now, we only have two materials: brick, for walls, and concrete, for everything else
                     model_struct_type = model_info_from_catalog["StructType"].values[0]
                     if model_struct_type == "Wall":
                         model_material = "mat-itu_brick"
                     else:
                         model_material = "mat-itu_concrete"
-
-                    ## Read the OBJ file and convert it to PLY, changing the unit to meters and centering the model file
-                    # the PLY file is saved in relative coordinates, centered in [0,0]
-                    # note that the unit is converted from feet to meters
-
-                    # convert the mesh file from OBJ to PLY
-                    _, n_tri = obj2ply(
-                        obj_path=in_model_path,
-                        ply_path=out_model_path,
-                        ft2m=True,
-                        center=True
-                        )
-                    
+                    models_materials.append(model_material)
+                        
                     # get the model center in local coordinates
                     model_translation_local = tile_transformer.transform(
                         model_info_from_json["Centr_Lon"],
                         model_info_from_json["Centr_Lat"],
                     )
 
-                    # create the model dictionary for Mitsuba
-                    tile_model_dict = get_mi_dict(
-                        model_material,
-                        model_center_x=model_translation_local[0],
-                        model_center_y=model_translation_local[1],
-                        model_z=0, #model_info_from_json["Z_MIn_Ft"]*FT2M_FACTOR,
-                        ply_path=out_model_path,
-                        ply_path_relative=self.out_dataset_dir,
-                    )
-
-                    n_tri_list.append(n_tri)
-
-                    # add model to the scene
-                    tile_mitsuba_scene_dict[model_name] = tile_model_dict
-
-                    # add model to the full (boston) scene
-                    boston_model_dict = tile_model_dict.copy()
-                    boston_model_dict["to_world"] = get_mi_dict(
-                        model_material=model_material,
-                        model_center_x=self.tiles_dict["boston"]["center_x_m"],
-                        model_center_y=self.tiles_dict["boston"]["center_y_m"],
-                        model_z=0,
-                        ply_path=out_model_path,
-                        ply_path_relative=self.out_dataset_dir,
-                    )
-                    boston_mitsuba_scene_dict[model_name] = boston_model_dict
-
+                    models_centers.append(model_translation_local)
                     n_models_tile = n_models_tile + 1
 
+                generate_mi_xml(
+                    scene_name=tile_name,
+                    models_list=model_list,
+                    models_dir=model_dir,
+                    out_dir=self.out_dataset_dir,
+                    models_materials=models_materials,
+                    models_center=models_centers,
+                    create_ground=True,
+                )
+
                 self.tiles_dict[tile_name]["n_models"] = n_models_tile
-                tile_n_tri = sum(n_tri_list)
-                self.tiles_dict[tile_name]["n_triangles"] = tile_n_tri
 
                 self.update_tiles_dict_json()
 
-                mi.xml.dict_to_xml(
-                    tile_mitsuba_scene_dict, str(output_tile_scene_path.resolve())
-                )
             tile_model_catalog_gdf.to_file(
                 output_tile_scene_path.with_suffix(".geojson"), driver="GeoJSON"
             )
@@ -522,11 +429,11 @@ class BostonModelDownloader:
             tile_info["center_lon"] = self.tiles_dict[tile_name]["center_lon"]
             tile_info["center_lon"] = self.tiles_dict[tile_name]["center_lat"]
             tile_info["n_models"] = n_models_tile
-            tile_info["n_triangles"] = tile_n_tri
+            # tile_info["n_triangles"] = tile_n_tri
             tile_info.to_file(output_tile_info_path, driver="GeoJSON")
 
             print(
-                f"Tile {tile_name} imported. There were {n_models_tile} models ({tile_n_tri} triangles)."
+                f"Tile {tile_name} imported. There were {n_models_tile} models."
             )
             t1 = time.perf_counter()
             print_eta(t0, t1, times, tile_idx, self.n_tiles)
@@ -540,16 +447,13 @@ class BostonModelDownloader:
 
     def _aggregate_geojson(self, out_path):
         scene_gdf_list = []
-        _drop_z = lambda geom: wkb.loads(wkb.dumps(geom, output_dimension=2))
         for tile_name, tile_dict in self.tiles_dict.items():
             if tile_name=="boston":
                 continue
             tile_model_catalog_path = tile_dict["tile_catalog_path"]
             tile_model_catalog_gdf = gpd.GeoDataFrame.from_file(tile_model_catalog_path)
             tile_model_catalog_gdf.to_crs("epsg:4326", inplace=True)
-            tile_model_catalog_gdf.geometry = tile_model_catalog_gdf.geometry.transform(
-                _drop_z
-            )
+            tile_model_catalog_gdf.geometry = tile_model_catalog_gdf.geometry.apply(lambda x: shp.force_2d(x))
             scene_gdf_list.append(tile_model_catalog_gdf)
         boston_gdf = gpd.GeoDataFrame(
             pd.concat(scene_gdf_list, ignore_index=True), crs="epsg:4326"
