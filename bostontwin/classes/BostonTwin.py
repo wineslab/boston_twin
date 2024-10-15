@@ -59,7 +59,7 @@ class BostonTwin:
         if isinstance(dataset_dir, str):
             dataset_dir = Path(dataset_dir)
         self.dataset_dir = dataset_dir
-        self.boston_model_path = dataset_dir.joinpath("boston3d")
+        self.boston_model_path = dataset_dir.joinpath("scenes")
         self.boston_model = BostonModel(self.boston_model_path)
         self.boston_antennas_path = dataset_dir.joinpath("boston_antennas", "boston_antennas.geojson")
 
@@ -207,7 +207,7 @@ class BostonTwin:
     def _get_mi_scene(self):
         return self._current_mi_scene
 
-    def load_bostontwin(
+    def load_scene(
         self, scene_name: str, load_sionna=True, load_mi_scene=False, load_geodf=False
     ):
         """Load `scene_name` as the current scene.
@@ -445,8 +445,10 @@ class BostonTwin:
         )
         t1 = time.time()
         print(f"Done. ({t1-t0:.2f} s)")
+
+        scene_center = {"center_lon": center_lon, "center_lat": center_lat}
         self.boston_model.generate_scene_from_model_gdf(
-            boston_gdf, (center_lon, center_lat), scene_name
+            boston_gdf, scene_center, scene_name
         )
 
         if load:

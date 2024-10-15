@@ -173,3 +173,4 @@ data/*
 *.png
 *.json
 */*.DS_Store
+*.wkt
