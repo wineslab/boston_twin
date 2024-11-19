@@ -466,7 +466,7 @@ class BostonTwin:
         geod = pyproj.Geod(ellps="WGS84")
         lon1, lat1, _ = geod.fwd(center_lon, center_lat, azimuths[0], radius)
         lon2, lat2, _ = geod.fwd(center_lon, center_lat, azimuths[1], radius)
-        bbox = [lon1, lat1, lon2, lat2]
+        bbox = (lon1, lat1, lon2, lat2)
         self.generate_scene_from_bbox(scene_name, bbox, scene_center_lon=center_lon, scene_center_lat=center_lat, load=False)
 
     def generate_scene_from_bbox(self, scene_name:str, bbox:tuple, scene_center_lon:float=None,scene_center_lat:float=None, load:bool=False):

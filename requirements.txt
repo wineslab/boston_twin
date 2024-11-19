@@ -4,3 +4,5 @@ mitsuba
 requests
 contextily
 open3d
+jupyter
+pycollada
