@@ -47,7 +47,7 @@ class BostonModelDownloader:
         )
 
         self.bostontwin_center = (-71.08765495983191, 42.337479190130736)  # center of the local CRS
-        
+
         self.set_local_projections()
 
         print(f"Data will be downloaded from {PUBLIC_URL}.")
@@ -508,7 +508,7 @@ class BostonModelDownloader:
         boston_gdf.to_file(out_path, driver="GeoJSON")
 
     def set_local_projections(self):
-        original_prj_path = self.in_model_dir.joinpath("Metro_Boston_3D_CRS.prj")
+        original_prj_path = Path(__file__).parents[2].joinpath("data").joinpath("Metro_Boston_3D_CRS.prj")
         if not original_prj_path.is_file():
             print("Original file not found. Please download it with download_data().")
             self.original_crs = None

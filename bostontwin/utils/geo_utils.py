@@ -103,9 +103,13 @@ def get_crs(scene_name:str, scene_center_lon_lat:Tuple):
 def check_point_in_area_of_use(crs, in_location):
     # assert in_crs.is_geographic, "Input CRS must be geographic"
     # get out_crs bounds
-    bounding_box = box(*crs.area_of_use.bounds)
-    out_polygon = Point(*in_location)
-    return bounding_box.contains(out_polygon)
+    try:
+        bounding_box = box(*crs.area_of_use.bounds)
+        out_polygon = Point(*in_location)
+        return bounding_box.contains(out_polygon)
+    except AttributeError as e:
+        print("CRS has no area of use.")
+        return True
 
 def check_area_of_use(in_crs:pyproj.CRS, out_crs:pyproj.CRS, in_coords:Union[Tuple,List])->bool:
     # get out_crs bounds

@@ -135,9 +135,14 @@ def obj2ply_crs_conversion(obj_path, ply_path, transformer, flat=True):
     
     if flat:
         new_vertices[:,2] = new_vertices[:,2] - new_vertices[:,2].min()
-    
-    mesh.vertices = o3d.utility.Vector3dVector(new_vertices)
-    
+
+    new_vertices_dummy = np.zeros(new_vertices.shape)
+    for v in range(new_vertices.shape[0]):
+        for c in range(new_vertices.shape[1]):
+            new_vertices_dummy[v, c] = new_vertices[v, c]
+
+    mesh.vertices = o3d.utility.Vector3dVector(new_vertices_dummy)
+
     mesh_center = mesh.get_center()
 
     # compute the normals
