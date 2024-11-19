@@ -11,11 +11,10 @@ import pandas as pd
 import pyproj
 import requests
 import shapely as shp
-from pyproj.transformer import Transformer
 from shapely.geometry import box
 
 from bostontwin.utils.geo_utils import check_area_of_use, gdf2crs, get_crs
-from bostontwin.utils.obj_utils import dir_obj2ply
+from bostontwin.utils.obj_utils import obj2ply_crs_conversion
 from bostontwin.utils.utils import generate_mi_xml, print_eta, truncate_utf8_chars
 
 mi.set_variant("scalar_rgb")
@@ -47,6 +46,8 @@ class BostonModelDownloader:
             True  # for now, we don't support ground elevation different from zero
         )
 
+        self.bostontwin_center = (-71.08765495983191, 42.337479190130736)  # center of the local CRS
+        
         self.set_local_projections()
 
         print(f"Data will be downloaded from {PUBLIC_URL}.")
@@ -275,14 +276,15 @@ class BostonModelDownloader:
         if not model_dir.is_dir():
             model_dir.mkdir(exist_ok=True, parents=True)
             
-        # convert all the obj files to ply
-        t0 = time.perf_counter()
-        dir_obj2ply(self.in_model_dir, model_dir, recursive=True, ft2m=True, center=True)
-        t1 = time.perf_counter()
-        print(f"Converted all OBJ files to PLY in {t1-t0:.2f} s.")
+        # # convert all the obj files to ply
+        # t0 = time.perf_counter()
+        # dir_obj2ply(self.in_model_dir, model_dir, recursive=True, ft2m=True, center=True)
+        # t1 = time.perf_counter()
+        # print(f"Converted all OBJ files to PLY in {t1-t0:.2f} s.")
 
         # scenes are imported and converted to lon lat crs (epsg:4326) by default
         times = []
+        valid_model_list = []
         boston_mitsuba_scene_dict = {
             "type": "scene",
             "integrator": {
@@ -328,35 +330,55 @@ class BostonModelDownloader:
             output_tile_info_path = self.out_dataset_dir.joinpath(
                 tile_name + "_tileinfo" + ".geojson"
             )
-            if (
-                output_tile_scene_path.is_file()
-                and output_tile_scene_path.with_suffix(".geojson").is_file()
-                and output_tile_info_path.is_file()
-            ):
-                continue
+            # if (
+            #     output_tile_scene_path.is_file()
+            #     and output_tile_scene_path.with_suffix(".geojson").is_file()
+            #     and output_tile_info_path.is_file()
+            # ):
+            #     continue
 
             tile_model_catalog_path = tile_dict["tile_catalog_path"]
             tile_model_catalog_gdf = gpd.GeoDataFrame.from_file(
                 tile_model_catalog_path
             )
+            
+            tile_bounds = tile_model_catalog_gdf.total_bounds
+            tile_bounds = [
+                self.lonlat2local_transformer.transform(
+                    tile_bounds[0],
+                    tile_bounds[1],
+                    ),
+                self.lonlat2local_transformer.transform(
+                    tile_bounds[2],
+                    tile_bounds[3],
+                    )]
+            tile_center = [
+                (tile_bounds[0][0] + tile_bounds[1][0]) / 2,
+                (tile_bounds[0][1] + tile_bounds[1][1]) / 2,
+            ]
+            
             tile_model_catalog_gdf = tile_model_catalog_gdf.to_crs("epsg:4326")
+            tile_model_catalog_gdf = tile_model_catalog_gdf[
+                tile_model_catalog_gdf["Status"] == "Current"
+            ]
 
             # drop the z coordinate from the geodataframe for faster processing 
             tile_model_catalog_gdf.geometry = tile_model_catalog_gdf.geometry.apply(
                 lambda x: shp.force_2d(x)
             )
             if create_xml:
-                # define CRS for the tile
-                tile_crs = get_crs(scene_name=tile_name,
-                                   scene_center_lon_lat=[tile_dict["center_lon"], tile_dict["center_lat"]])
-                tile_transformer = Transformer.from_crs(self.local_crs_lonlat, tile_crs, always_xy=True)
-                with open(model_dir.parent.joinpath(f"{tile_name}.wkt"), "w") as f:
-                    f.write(tile_crs.to_wkt(output_axis_rule=True))
+                # # define CRS for the tile
+                # tile_crs = get_crs(scene_name=tile_name,
+                #                    scene_center_lon_lat=[tile_dict["center_lon"], tile_dict["center_lat"]])
+                # tile_transformer = Transformer.from_crs(self.local_crs_lonlat, tile_crs, always_xy=True)
+                # with open(model_dir.parent.joinpath(f"{tile_name}.wkt"), "w") as f:
+                #     f.write(tile_crs.to_wkt(output_axis_rule=True))
 
                 # enumerate the models in the tile, prepare the structure for the XML, and check the data consistency
-                model_list = tile_dict["model_list"]
+                model_list = tile_model_catalog_gdf["Model_ID"].tolist()
                 models_materials = []
                 models_centers = []
+                triangles_list = []
                 n_models_tile = 0
                 for model_name in model_list:
                     ## There are two sources of model information: the geojson catalog and the info.json file
@@ -384,6 +406,21 @@ class BostonModelDownloader:
                     ):
                         continue
                     
+                    ## Convert OBJ to PLY
+                    # obj2ply(
+                    #     tile_model_catalog_path.parent.joinpath(model_name + ".obj"),
+                    #     model_dir.joinpath(model_name + ".ply"),
+                    #     center=[
+                    #         model_info_from_json["Centr_X_Ft"],
+                    #         model_info_from_json["Centr_Y_Ft"],
+                    #     ],
+                    # )
+                    model_center, model_n_tri = obj2ply_crs_conversion(
+                        tile_model_catalog_path.parent.joinpath(model_name + ".obj"),
+                        model_dir.joinpath(model_name + ".ply"),
+                        self.original2local_transformer,
+                    )
+                    
                     ## Choose the model material. For now, we only have two materials: brick, for walls, and concrete, for everything else
                     model_struct_type = model_info_from_catalog["StructType"].values[0]
                     if model_struct_type == "Wall":
@@ -391,14 +428,19 @@ class BostonModelDownloader:
                     else:
                         model_material = "mat-itu_concrete"
                     models_materials.append(model_material)
-                        
-                    # get the model center in local coordinates
-                    model_translation_local = tile_transformer.transform(
-                        model_info_from_json["Centr_Lon"],
-                        model_info_from_json["Centr_Lat"],
-                    )
+                    
+                    tile_model_catalog_gdf[
+                        tile_model_catalog_gdf["Model_ID"] == model_name
+                    ]["Center_X_local"] = model_center[0]
+                    tile_model_catalog_gdf[
+                        tile_model_catalog_gdf["Model_ID"] == model_name
+                    ]["Center_Y_local"] = model_center[1]
+                    tile_model_catalog_gdf[tile_model_catalog_gdf["Model_ID"] == model_name]["Center_Z_local"] = model_center[2]
+                    tile_model_catalog_gdf[tile_model_catalog_gdf["Model_ID"] == model_name]["n_triangles"] = model_n_tri
 
-                    models_centers.append(model_translation_local)
+                    triangles_list.append(model_n_tri)
+                    models_centers.append(model_center)
+                    valid_model_list.append(model_name)
                     n_models_tile = n_models_tile + 1
 
                 generate_mi_xml(
@@ -407,8 +449,11 @@ class BostonModelDownloader:
                     models_dir=model_dir,
                     out_dir=self.out_dataset_dir,
                     models_materials=models_materials,
-                    models_center=models_centers,
+                    models_center=[[0, 0]]
+                    * len(models_materials),
+                    # models_center=[[-tile_center[0],-tile_center[1]]]*len(models_materials), # models_centers,
                     create_ground=True,
+                    ground_center=[tile_center[0], tile_center[1]],
                 )
 
                 self.tiles_dict[tile_name]["n_models"] = n_models_tile
@@ -443,15 +488,17 @@ class BostonModelDownloader:
         )
 
         output_boston_gdf_path = self.out_dataset_dir.joinpath("boston" + ".geojson")
-        self._aggregate_geojson(output_boston_gdf_path)
+        self._aggregate_geojson(output_boston_gdf_path, valid_model_list)
 
-    def _aggregate_geojson(self, out_path):
+    def _aggregate_geojson(self, out_path, model_list = []):
         scene_gdf_list = []
         for tile_name, tile_dict in self.tiles_dict.items():
             if tile_name=="boston":
                 continue
             tile_model_catalog_path = tile_dict["tile_catalog_path"]
             tile_model_catalog_gdf = gpd.GeoDataFrame.from_file(tile_model_catalog_path)
+            if model_list:
+                tile_model_catalog_gdf = tile_model_catalog_gdf[tile_model_catalog_gdf["Model_ID"].isin(model_list)]
             tile_model_catalog_gdf.to_crs("epsg:4326", inplace=True)
             tile_model_catalog_gdf.geometry = tile_model_catalog_gdf.geometry.apply(lambda x: shp.force_2d(x))
             scene_gdf_list.append(tile_model_catalog_gdf)
@@ -470,12 +517,19 @@ class BostonModelDownloader:
                 prj_str = f.readline()
                 self.original_crs = pyproj.CRS.from_wkt(prj_str)
 
-        self.local_crs = pyproj.CRS.from_user_input("EPSG:26986")
+        self.local_crs = get_crs(scene_name="BostonTwin", scene_center_lon_lat=self.bostontwin_center)
+        with open(self.out_dataset_dir.parent.joinpath("BostonTwin.wkt"), "w") as f:
+            f.write(self.local_crs.to_wkt(output_axis_rule=True))
+        
         self.local_crs_lonlat = pyproj.CRS.from_user_input("EPSG:4326")
+        self.original2local_transformer = pyproj.Transformer.from_crs(
+            self.original_crs, self.local_crs, always_xy=True
+        )
 
         self.lonlat2local_transformer = pyproj.Transformer.from_crs(self.local_crs_lonlat, self.local_crs, always_xy=True)
         self.local2lonlat_transformer = pyproj.Transformer.from_crs(
             self.local_crs, self.local_crs_lonlat, always_xy=True)
+        
 
     def _get_tile_info(self):
         self.model_rootdir
@@ -498,28 +552,30 @@ class BostonModelDownloader:
     def check_model_info(model_info_from_catalog, model_info_from_json, model_name):
         ## Read model info
         if model_info_from_json["Status"] != "Current":
+            print(f"Model {model_name} is not current ({model_info_from_json['Status']}). Skipping.")
             return False
 
-        ## Check elevation and center of the model
-        # get ground elevation [ft] from catalog and info.json
-        ground_el_from_catalog = model_info_from_catalog["Gnd_El_Ft"].values[0]
-        ground_el_from_info = model_info_from_json["Gnd_El_Ft"]
-
-        # if the ground elevation is not available, skip the model
-        if np.isnan(ground_el_from_catalog) or not ground_el_from_info:
-            return False
-        assert (
-            ground_el_from_info == ground_el_from_catalog
-        ), f"Mismatch between catalog (height: ({ground_el_from_catalog})) and info.json (height: ({ground_el_from_info})).\n\tModel: {model_name}.\n\tStatus:{model_info_from_json['Status']}"
+        # ## Check elevation and center of the model
+        # # get ground elevation [ft] from catalog and info.json
+        # ground_el_from_catalog = model_info_from_catalog["Gnd_El_Ft"].values[0]
+        # ground_el_from_info = model_info_from_json["Gnd_El_Ft"]
+        #
+        # # if the ground elevation is not available, skip the model
+        # if np.isnan(ground_el_from_catalog) or not ground_el_from_info:
+        #     print(f"Model {model_name} has no ground elevation. Skipping.")
+        #     return False
+        # assert (
+        #     abs(ground_el_from_info - ground_el_from_catalog)<1
+        # ), f"Mismatch between catalog (height: ({ground_el_from_catalog})) and info.json (height: ({ground_el_from_info})).\n\tModel: {model_name}.\n\tStatus:{model_info_from_json['Status']}"
 
         # get center of the model [ft] from catalog and info.json
         center_x_ft_from_catalog = model_info_from_catalog["Centr_X_Ft"].values[0]
         center_y_ft_from_catalog = model_info_from_catalog["Centr_Y_Ft"].values[0]
         center_x_ft_from_info = model_info_from_json["Centr_X_Ft"]
         center_y_ft_from_info = model_info_from_json["Centr_Y_Ft"]
-        z_min_ft_from_info = model_info_from_json["Z_MIn_Ft"]
-        assert (center_x_ft_from_catalog == center_x_ft_from_info) and (
-            center_y_ft_from_catalog == center_y_ft_from_info
+        # z_min_ft_from_info = model_info_from_json["Z_MIn_Ft"]
+        assert (abs(center_x_ft_from_catalog-center_x_ft_from_info)<1) and (
+            abs(center_y_ft_from_catalog-center_y_ft_from_info)<1
         ), f"Mismatch between catalog (center: ({center_x_ft_from_catalog}, {center_y_ft_from_catalog})) and info.json (center: ({center_x_ft_from_info}, {center_y_ft_from_info}))"
 
         return True

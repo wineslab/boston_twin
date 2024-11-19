@@ -25,10 +25,11 @@ def generate_mi_xml(
     models_materials,
     models_center,
     create_ground=True,
+    ground_center = [0, 0],
     ground_size = FT2M_FACTOR * 2650
 ):
     
-    scene_dict = generate_mi_scene_dict(models_list, models_dir, out_dir, models_materials, models_center, create_ground)
+    scene_dict = generate_mi_scene_dict(models_list, models_dir, out_dir, models_materials, models_center)
     if create_ground:
         # load frame obj and use it as (flat) ground
         frame_name = f"{scene_name}_terrain_flat"
@@ -36,8 +37,8 @@ def generate_mi_xml(
         frame_material = "mat-itu_medium_dry_ground"
         ground_dict, _ = create_ground_dict(
             frame_material,
-            0,
-            0,
+            ground_center[0],
+            ground_center[1],
             0,
             ground_size,  # tile size is 5000 ft x 5000 ft, we increase it a bit
             base_rect_path.resolve(),
@@ -47,7 +48,7 @@ def generate_mi_xml(
         scene_dict["ground"] = ground_dict
         mi.xml.dict_to_xml(scene_dict, str(out_dir.joinpath(scene_name + ".xml").resolve()))
 
-def generate_mi_scene_dict(models_list, models_dir, out_dir, models_materials, models_center, create_ground=True):
+def generate_mi_scene_dict(models_list, models_dir, out_dir, models_materials, models_center):
     mitsuba_scene_dict = {
         "type": "scene",
         "integrator": {

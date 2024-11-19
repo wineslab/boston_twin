@@ -9,12 +9,12 @@ import matplotlib.pyplot as plt
 import mitsuba as mi
 import numpy as np
 import pyproj
+import pyproj.crs
 from collada import Collada, geometry, material, scene, source
 from matplotlib.axes import Axes
 from sionna.rt import load_scene
 
-from bostontwin.utils.geo_utils import (
-    check_area_of_use,
+from ..utils.geo_utils import (
     check_point_in_area_of_use,
     gdf2crs,
     plot_geodf,
@@ -59,17 +59,25 @@ class BostonTwin:
         if isinstance(dataset_dir, str):
             dataset_dir = Path(dataset_dir)
         self.dataset_dir = dataset_dir
+        
         self.boston_model_path = dataset_dir.joinpath("scenes")
         self.boston_model = BostonModel(self.boston_model_path)
+        
         self.boston_antennas_path = dataset_dir.joinpath("boston_antennas", "boston_antennas.geojson")
+
+        self._local_crs = self.boston_model.local_crs
+        self._lonlat2local = pyproj.Transformer.from_crs(
+            "EPSG:4236", self._local_crs, always_xy=True
+        )
+        self._local2lonlat = pyproj.Transformer.from_crs(
+            self._local_crs, "EPSG:4236", always_xy=True
+        )
 
         self.current_scene_name = ""
         self.current_scene_gdf_localcrs = None
         self.current_sionna_scene = None
         self._current_mi_scene = None
         self._current_antennas = None
-        self._current_scene_localcrs = None
-
 
     def _check_scene(self):
         if self.current_scene_name is None:
@@ -136,6 +144,8 @@ class BostonTwin:
         """
         self.current_scene_name = scene_name
 
+        if scene_name not in self.boston_model.tile_names:
+            raise ValueError(f"Scene {scene_name} not found in BostonTwin")
         self.tile_info_path = self.boston_model.tiles_dict[self.current_scene_name][
             "tileinfo_path"
         ]
@@ -145,11 +155,6 @@ class BostonTwin:
         self.geo_scene_path = self.boston_model.tiles_dict[self.current_scene_name][
             "geo_scene_path"
         ]
-        self.crs_wkt_path = self.geo_scene_path.with_suffix(".wkt")
-        with open(self.crs_wkt_path, "r") as f:
-            self._current_scene_localcrs = pyproj.CRS.from_wkt(f.read())
-        self._current_scene_lonlat2local = pyproj.Transformer.from_crs("EPSG:4236", self._current_scene_localcrs, always_xy=True)
-        self._current_scene_local2lonlat = pyproj.Transformer.from_crs(self._current_scene_localcrs, "EPSG:4236", always_xy=True)
 
         self.mi_scene_path = self.boston_model.tiles_dict[self.current_scene_name][
             "mi_scene_path"
@@ -167,7 +172,7 @@ class BostonTwin:
 
         self.current_scene_gdf_localcrs = self.current_scene_gdf_lonlat.copy()
         self.current_scene_gdf_localcrs = gdf2crs(
-            self.current_scene_gdf_localcrs, self._current_scene_lonlat2local
+            self.current_scene_gdf_localcrs, self._lonlat2local
         )
 
     def get_boston_antennas(self):
@@ -196,12 +201,15 @@ class BostonTwin:
         if not antennas_lonlat.crs.is_geographic:
             raise ValueError("The GeoDataFrame must be in geographic coordinates (EPSG:4326).")
 
-        antennas_local = gdf2crs(antennas_lonlat, self._current_scene_lonlat2local)
+        antennas_local = gdf2crs(antennas_lonlat, self._lonlat2local)
         return antennas_lonlat, antennas_local
 
     def lonlat2local(self, lonlat_coords: Iterable[Tuple[float, float]]) -> List[Tuple[float, float]]:
-        check_area_of_use("EPSG:4326", self._current_scene_localcrs, lonlat_coords)
-        local_coords = [self._current_scene_lonlat2local.transform(*coord) for coord in lonlat_coords]
+        if len(lonlat_coords)==2:
+            if isinstance(lonlat_coords[0], (int, float)):
+                lonlat_coords = [lonlat_coords]
+        # check_area_of_use(pyproj.CRS.from_epsg("4326"), self._localcrs, lonlat_coords)
+        local_coords = [self._lonlat2local.transform(*coord) for coord in lonlat_coords][0]
         return local_coords
 
     def _get_mi_scene(self):
@@ -305,7 +313,7 @@ class BostonTwin:
         if isinstance(antennas, gpd.GeoDataFrame):
             if antennas.crs.is_geographic:
                 antennas_is_local = False
-            elif antennas.crs == self._current_scene_localcrs:
+            elif antennas.crs == self._local_crs:
                 antennas_is_local = True
         elif all(isinstance(x, tuple) for x in antennas):
             if all([check_point_in_area_of_use(
@@ -315,11 +323,11 @@ class BostonTwin:
                     geometry=gpd.points_from_xy(*zip(*antennas)),
                     crs="EPSG:4326",
                 )
-            elif all([check_point_in_area_of_use(self._current_scene_localcrs, x) for x in antennas]):
+            elif all([check_point_in_area_of_use(self._local_crs, x) for x in antennas]):
                 antennas_is_local = False
                 antennas = gpd.GeoDataFrame(
                     geometry=gpd.points_from_xy(*zip(*antennas)),
-                    crs=self._current_scene_localcrs,
+                    crs=self._local_crs,
                 )
             else:
                 raise ValueError("The antennas must be in either the local CRS or geographic coordinates.")
@@ -328,12 +336,12 @@ class BostonTwin:
         
         if local_crs:
             if not antennas_is_local:
-                plot_gdf = gdf2crs(antennas, self._current_scene_lonlat2local)
+                plot_gdf = gdf2crs(antennas, self._lonlat2local)
             else:
                 plot_gdf = antennas
         else:
             if antennas_is_local:
-                plot_gdf = gdf2crs(antennas, self._current_scene_local2lonlat)
+                plot_gdf = gdf2crs(antennas, self._local2lonlat)
             else:
                 plot_gdf = antennas
 
@@ -431,13 +439,20 @@ class BostonTwin:
         load : bool, optional
             Load the scene as current scene. Defaults to False.
         """
-        radius = np.sqrt(2) * side_m  # m
+        radius = np.sqrt(2) * side_m/2  # m
         azimuths = [45, 225]
 
         geod = pyproj.Geod(ellps="WGS84")
         lon1, lat1, _ = geod.fwd(center_lon, center_lat, azimuths[0], radius)
         lon2, lat2, _ = geod.fwd(center_lon, center_lat, azimuths[1], radius)
         bbox = [lon1, lat1, lon2, lat2]
+        self.generate_scene_from_bbox(scene_name, bbox, scene_center_lon=center_lon, scene_center_lat=center_lat, load=False)
+
+    def generate_scene_from_bbox(self, scene_name:str, bbox:tuple, scene_center_lon:float=None,scene_center_lat:float=None, load:bool=False):
+        if scene_center_lon is None and scene_center_lat is None:
+            print("The new scene center was not provided. Using the center of the bounding box in (lon,lat) as approximation.")
+            scene_center_lon = (bbox[0] + bbox[2]) / 2
+            scene_center_lat = (bbox[1] + bbox[3]) / 2
         print("Selecting models within the area...")
         t0 = time.time()
         boston_gdf = gpd.GeoDataFrame.from_file(
@@ -446,14 +461,14 @@ class BostonTwin:
         t1 = time.time()
         print(f"Done. ({t1-t0:.2f} s)")
 
-        scene_center = {"center_lon": center_lon, "center_lat": center_lat}
+        scene_center = {"center_lon": scene_center_lon, "center_lat": scene_center_lat}
         self.boston_model.generate_scene_from_model_gdf(
             boston_gdf, scene_center, scene_name
         )
 
         if load:
             self.set_scene(scene_name)
-
+        
     def export_scene_antennas(self, out_path: Union[Path, str]):
         """Export to file the location (in the local CRS) of the antennas in the current scene.
 

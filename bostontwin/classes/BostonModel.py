@@ -3,6 +3,7 @@ from typing import Union
 
 import geopandas as gpd
 import mitsuba as mi
+import pyproj
 from pyproj import Transformer
 
 try:
@@ -11,8 +12,7 @@ except:
     print("open3d not available")
 import shapely as shp
 
-from ..utils.constants import LOCAL_CRS_ORIGIN_GEO, LOCAL_CRS_ORIGIN_STATE
-from ..utils.geo_utils import gdf2crs, get_crs
+from ..utils.geo_utils import gdf2crs
 from ..utils.utils import generate_mi_xml
 
 try:
@@ -36,9 +36,8 @@ class BostonModel:
         self.tiles_dict = self._enumerate_scenes()
         self.tile_names = list(self.tiles_dict.keys())
 
-        self.origin_epsg4326 = LOCAL_CRS_ORIGIN_GEO
-        self.origin_epsg2249 = LOCAL_CRS_ORIGIN_STATE
-
+        local_crs_path = dataset_dir.parent.joinpath("BostonTwin.wkt")
+        self.local_crs = pyproj.CRS.from_wkt(local_crs_path.read_text())
         self.flat = (
             True  # for now, we don't support ground elevation different from zero
         )
@@ -145,8 +144,8 @@ class BostonModel:
     def generate_scene_from_model_gdf(self, model_gdf, scene_center, scene_name) -> None:
         output_scene_path = self.dataset_dir.joinpath(scene_name + ".xml")
         gdf_out_path = output_scene_path.with_suffix(".geojson")
-        if not gdf_out_path.is_file():
-            model_gdf.to_file(gdf_out_path, driver="GeoJSON")
+        # model_gdf = model_gdf[model_gdf["Status"]=="Current"]
+        model_gdf.to_file(gdf_out_path, driver="GeoJSON")
 
         output_scene_info_path = self.dataset_dir.joinpath(
             scene_name + "_tileinfo" + ".geojson"
@@ -169,8 +168,9 @@ class BostonModel:
             crs="epsg:4326"
         )
 
-        scene_crs = get_crs(scene_name=scene_name,
-                            scene_center_lon_lat=[scene_center["center_lon"], scene_center["center_lat"]])
+        # scene_crs = get_crs(scene_name=scene_name,
+        #                     scene_center_lon_lat=[scene_center["center_lon"], scene_center["center_lat"]])
+        scene_crs = self.local_crs
         scene_transformer = Transformer.from_crs("EPSG:4326", scene_crs, always_xy=True)
         with open(self.dataset_dir.joinpath(f"{scene_name}.wkt"), "w") as f:
             f.write(scene_crs.to_wkt(output_axis_rule=True))
@@ -195,9 +195,16 @@ class BostonModel:
             models_dir=self.dataset_dir.joinpath("meshes"),
             out_dir=self.dataset_dir,
             models_materials=models_materials,
-            models_center=models_centers,
+            models_center=[
+                [
+                    0,  # -scene_center_local[0],
+                    0,  # -scene_center_local[1]
+                ]
+            ]
+            * len(models_materials),  # models_centers,
             create_ground=True,
             ground_size=max(scene_size_x, scene_size_y),
+            ground_center=[scene_center_local[0], scene_center_local[1]],
         )
         tile_info["Centr_X_m"] = scene_center_local[0]
         tile_info["Centr_Y_m"] = scene_center_local[1]

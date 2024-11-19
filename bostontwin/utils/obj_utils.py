@@ -80,17 +80,23 @@ def obj2ply(obj_path, ply_path, ft2m=True, center=True):
     obj_path = obj_path.resolve()
     mesh = o3d.io.read_triangle_mesh(str(obj_path))
 
-    # if ft2m is True, convert the mesh from feet to meters
-    if ft2m:
-        mesh.scale(FT2M_FACTOR, center=mesh.get_center())
-
     # if center is True, center the mesh in (0,0,0)
     mesh_trans = [0, 0, 0]
     if center:
         mesh_center = mesh.get_center()
+        if len(center)==2:
+            mesh_center[0] = center[0]
+            mesh_center[1] = center[1]
+            
         mesh_min_z = np.asarray(mesh.vertices)[:, 2].min()
         mesh_trans = [-mesh_center[0], -mesh_center[1], -mesh_min_z]
-        mesh.translate(mesh_trans)
+    else:
+        mesh_center = mesh.get_center()
+    mesh.translate(mesh_trans)
+
+    # if ft2m is True, convert the mesh from feet to meters
+    if ft2m:
+        mesh.scale(FT2M_FACTOR, center=[0,0,0])
 
     # compute the normals
     mesh.compute_vertex_normals()
@@ -103,6 +109,47 @@ def obj2ply(obj_path, ply_path, ft2m=True, center=True):
 
     return mesh_trans, mesh_n_tri
 
+def obj2ply_crs_conversion(obj_path, ply_path, transformer, flat=True):
+    ## Convert the OBJ file to PLY, changing the unit to meters and centering the model file
+    # the PLY file is saved in relative coordinates, centered in [0,0]
+    # note that the unit is converted from feet to meters
+
+    # check if input file exists
+    obj_path = Path(obj_path)
+    if not obj_path.is_file():
+        raise FileNotFoundError(f"File not found: {obj_path}")
+
+    # check if output directory exists
+    ply_path = Path(ply_path)
+    if not ply_path.parent.is_dir():
+        raise FileNotFoundError(f"Directory not found: {ply_path.parent}")
+
+    # load the obj file
+    obj_path = obj_path.resolve()
+    mesh = o3d.io.read_triangle_mesh(str(obj_path))
+
+    vertices = np.asarray(mesh.vertices)
+
+    new_vertices = transformer.transform(vertices[:, 0], vertices[:, 1], vertices[:, 2])
+    new_vertices = np.array(new_vertices).T
+    
+    if flat:
+        new_vertices[:,2] = new_vertices[:,2] - new_vertices[:,2].min()
+    
+    mesh.vertices = o3d.utility.Vector3dVector(new_vertices)
+    
+    mesh_center = mesh.get_center()
+
+    # compute the normals
+    mesh.compute_vertex_normals()
+    mesh.compute_triangle_normals()
+
+    # save the mesh as a ply file
+    o3d.io.write_triangle_mesh(str(ply_path), mesh)
+
+    mesh_n_tri = len(mesh.triangles)
+
+    return mesh_center, mesh_n_tri
 
 def create_ground_dict(
     model_material,
@@ -117,13 +164,13 @@ def create_ground_dict(
     ## Read the OBJ file and convert it to PLY, changing the unit to meters and centering the model file
     # the PLY file is saved in relative coordinates, centered in [0,0]
     # note that the unit is converted from feet to meters
-    to_relative = mi.ScalarTransform4f.scale(scale_factor).translate(
+    to_relative = mi.ScalarTransform4f.translate(
         [
             x_shift,
             y_shift,
             z_shift,
         ]
-    )
+    ).scale(scale_factor)
     in_model_dict = {
         "type": "ply",
         "filename": str(base_rect_path.resolve()),
@@ -133,25 +180,28 @@ def create_ground_dict(
     model = mi.load_dict(in_model_dict)  # load the model into mitsuba
     n_tri = model.face_count()
 
+    out_dict = in_model_dict.copy()
+    out_dict["filename"] = str(ply_path.relative_to(ply_path.parents[1]))
+    out_dict.pop("to_world")
     # write the scaled and centered model to PLY file
     model.write_ply(str(ply_path.resolve()))
 
-    # create the new mitsuba dict for the PLY file
-    center_x_m_from_info = x_shift * scale_factor
-    center_y_m_from_info = y_shift * scale_factor
-    z_min_m_from_info = z_shift * scale_factor
-    to_world = mi.ScalarTransform4f.translate(
-        [
-            -center_x_m_from_info,
-            -center_y_m_from_info,
-            -z_min_m_from_info,
-        ]
-    )
-    out_model_dict = {
-        "to_world": to_world,
-        "type": "ply",
-        "filename": str(ply_path.relative_to(ply_path_relative)),
-        "face_normals": True,
-        "bsdf": {"type": "ref", "id": model_material},
-    }
-    return out_model_dict, n_tri
+    # # create the new mitsuba dict for the PLY file
+    # center_x_m_from_info = x_shift * scale_factor
+    # center_y_m_from_info = y_shift * scale_factor
+    # z_min_m_from_info = z_shift * scale_factor
+    # to_world = mi.ScalarTransform4f.translate(
+    #     [
+    #         -center_x_m_from_info,
+    #         -center_y_m_from_info,
+    #         -z_min_m_from_info,
+    #     ]
+    # )
+    # out_model_dict = {
+    #     "to_world": to_world,
+    #     "type": "ply",
+    #     "filename": str(ply_path.relative_to(ply_path_relative)),
+    #     "face_normals": True,
+    #     "bsdf": {"type": "ref", "id": model_material},
+    # }
+    return out_dict, n_tri

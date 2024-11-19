@@ -120,5 +120,5 @@ def check_area_of_use(in_crs:pyproj.CRS, out_crs:pyproj.CRS, in_coords:Union[Tup
             in_crs, out_crs, always_xy=True
         ).transform(*in_coords)
         return check_point_in_area_of_use(
-            in_crs, out_crs, in_coords
+            in_crs, in_coords
         ) & check_point_in_area_of_use(out_crs, in_location_out_crs)
