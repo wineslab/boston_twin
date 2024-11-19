@@ -9,5 +9,5 @@ out_dataset_dir = Path("dataset", "scenes")
 bos_downloader = BostonModelDownloader(
         in_model_dir,
         out_dataset_dir)
-# bos_downloader.download_data(save_dir=in_model_dir, extract_objs=False)
+bos_downloader.download_data(save_dir=in_model_dir, extract_objs=True)
 bos_downloader.generate_dataset(create_xml=True)

@@ -1,5 +1,9 @@
 #  dataset
 tmp_data/
+__pycache__/
+__MACOSX/
+*.pyc
+*.zip
 
 
 
