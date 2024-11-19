@@ -63,7 +63,8 @@ class BostonTwin:
         self.boston_model_path = dataset_dir.joinpath("scenes")
         self.boston_model = BostonModel(self.boston_model_path)
         
-        self.boston_antennas_path = dataset_dir.joinpath("boston_antennas", "boston_antennas.geojson")
+        self.boston_antennas_path = dataset_dir.joinpath("antennas", "boston_antennas.geojson")
+        self.boston_antennas_gdf_lonlat = gpd.read_file(self.boston_antennas_path, crs="EPSG:4326")
 
         self._local_crs = self.boston_model.local_crs
         self._lonlat2local = pyproj.Transformer.from_crs(
@@ -159,6 +160,10 @@ class BostonTwin:
         self.mi_scene_path = self.boston_model.tiles_dict[self.current_scene_name][
             "mi_scene_path"
         ]
+        
+        self._current_antennas = self._get_antenna_location_from_bb(
+                *self.current_scene_info_gdf.total_bounds
+            )
 
     def _load_mi_scene(self):
         self._check_scene()
@@ -174,6 +179,15 @@ class BostonTwin:
         self.current_scene_gdf_localcrs = gdf2crs(
             self.current_scene_gdf_localcrs, self._lonlat2local
         )
+
+    def _get_antenna_location_from_bb(self, xmin, ymin, xmax, ymax):
+        return self.boston_antennas_gdf_lonlat.cx[xmin:xmax, ymin:ymax].reset_index(
+            drop=True
+        )
+    
+    def get_scene_antennas(self):
+
+        return self._current_antennas
 
     def get_boston_antennas(self):
         return self.get_antennas_from_geodf(self.boston_antennas_path)
@@ -209,7 +223,7 @@ class BostonTwin:
             if isinstance(lonlat_coords[0], (int, float)):
                 lonlat_coords = [lonlat_coords]
         # check_area_of_use(pyproj.CRS.from_epsg("4326"), self._localcrs, lonlat_coords)
-        local_coords = [self._lonlat2local.transform(*coord) for coord in lonlat_coords][0]
+        local_coords = [self._lonlat2local.transform(*coord) for coord in lonlat_coords]
         return local_coords
 
     def _get_mi_scene(self):
@@ -286,7 +300,7 @@ class BostonTwin:
 
     def plot_antennas(
         self,
-        antennas: Union[gpd.GeoDataFrame, Iterable[Tuple[float, float]]],
+        antennas: Union[gpd.GeoDataFrame, Iterable[Tuple[float, float]]] = None,
         basemap: bool = False,
         local_crs: bool = False,
         annotate: bool = False,
@@ -310,6 +324,13 @@ class BostonTwin:
         """
         
         antennas_is_local = None
+        
+        if antennas is None:
+            if self._current_antennas is None:
+                antennas = self.get_scene_antennas()
+            else:
+                antennas = self._current_antennas
+
         if isinstance(antennas, gpd.GeoDataFrame):
             if antennas.crs.is_geographic:
                 antennas_is_local = False
@@ -585,6 +606,9 @@ class BostonTwin:
         print(f"Writing Collada file to {out_file}")
         mesh.write(out_file)
 
+        
+        
+        
     # Static Methods
     @staticmethod
     def translate_gdf(gdf, xoff, yoff):
