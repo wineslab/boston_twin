@@ -359,7 +359,7 @@ class BostonModelDownloader:
             
             tile_model_catalog_gdf = tile_model_catalog_gdf.to_crs("epsg:4326")
             tile_model_catalog_gdf = tile_model_catalog_gdf[
-                tile_model_catalog_gdf["Status"] == "Current"
+                (tile_model_catalog_gdf["Status"] != "History" & tile_model_catalog_gdf["Status"] != "Approved Demo")
             ]
 
             # drop the z coordinate from the geodataframe for faster processing 
@@ -551,7 +551,7 @@ class BostonModelDownloader:
     @staticmethod
     def check_model_info(model_info_from_catalog, model_info_from_json, model_name):
         ## Read model info
-        if model_info_from_json["Status"] != "Current":
+        if model_info_from_json["Status"]=="Approved Demo" or model_info_from_json["Status"]=="History":
             print(f"Model {model_name} is not current ({model_info_from_json['Status']}). Skipping.")
             return False
 
