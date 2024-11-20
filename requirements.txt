@@ -5,4 +5,5 @@ requests
 contextily
 open3d
 jupyter
+sionna
 pycollada
