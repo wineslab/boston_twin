@@ -187,6 +187,7 @@ def create_ground_dict(
 
     out_dict = in_model_dict.copy()
     out_dict["filename"] = str(ply_path.relative_to(ply_path.parents[1]))
+    out_dict["bsdf"] = {"type": "ref", "id": model_material}
     out_dict.pop("to_world")
     # write the scaled and centered model to PLY file
     model.write_ply(str(ply_path.resolve()))
