@@ -24,22 +24,26 @@ def generate_dataset(
     
     os.makedirs(output_dir, exist_ok=True)
     for i in range(num_samples):
-        scene_name: str = f"scene_{i}"
+        scene_name: str = f"scene"
         center: list[float] = [np.random.uniform(-71.09, -71.07),
                                np.random.uniform(42.33, 42.34)]      # can we find this boundaries from Boston Twin? 
 
         # elevation map
-        bostwin.generate_scene_from_radius(scene_name=scene_name,
-                                            center_lon=center[0],
-                                            center_lat=center[1],
-                                            side_m=area_radius,
-                                            load=True,
-                                            )
+        try: 
+            bostwin.generate_scene_from_radius(scene_name=scene_name,
+                                                center_lon=center[0],
+                                                center_lat=center[1],
+                                                side_m=area_radius,
+                                                load=True,
+                                                )
+            sionna_scene = bostwin.load_scene(scene_name)
+        except:
+            print(f'can not produce the 3d map for {center}')
+            continue
+
         elevation_map = bostwin.get_elevation_map(resolution=resolution)
         np.save(f"{output_dir}/elevation_map_{i}.npy", elevation_map)
         
-        # coverage map
-        sionna_scene, _ = bostwin.load_bostontwin(scene_name)
         antenna_array = PlanarArray(
             num_rows=1,
             num_cols=1,
@@ -50,7 +54,6 @@ def generate_dataset(
         )
         sionna_scene.tx_array = antenna_array
         sionna_scene.rx_array = antenna_array
-
         tx0 = Transmitter(
             name="tx0",
             position=[0, 0, 20],  # Center of the scene
@@ -64,10 +67,29 @@ def generate_dataset(
                                                 cm_cell_size=(resolution, resolution),
                                                 combining_vec=None,
                                                 precoding_vec=None,
-                                                num_samples=num_samples,
+                                                num_samples=int(1e6),
                                                 )
         path_gain: np.ndarray = coverage_map.path_gain.numpy().squeeze()
-        np.save(f"{output_dir}/coverage_map_{i}.npy", path_gain)   
+        np.save(f"{output_dir}/coverage_map_{i}.npy", path_gain) 
+
+        # Plot elevation and coverage map
+        fig, axs = plt.subplots(1, 2, figsize=(12, 6))
+        
+        # Elevation map
+        axs[0].imshow(elevation_map, cmap='terrain', origin='lower')
+        axs[0].set_title('Elevation Map')
+        axs[0].set_xlabel('X (pixels)')
+        axs[0].set_ylabel('Y (pixels)')
+        
+        # Coverage map
+        axs[1].imshow(path_gain, cmap='viridis', origin='lower')
+        axs[1].set_title('Coverage Map')
+        axs[1].set_xlabel('X (pixels)')
+        axs[1].set_ylabel('Y (pixels)')
+        
+        plt.tight_layout()
+        plt.savefig(f"{output_dir}/map_{i}.png")
+        plt.close(fig)
 
         print(f"Sample {i + 1}/{num_samples} generated.")
 
@@ -76,13 +98,13 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = '1'    # GPU ID 
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
     
-    dataset_path = Path("bostontwin")
+    dataset_path = Path("dataset")
     bostwin = BostonTwin(dataset_path)
 
     generate_dataset(
         bostwin, 
-        num_samples=100, 
+        num_samples=int(1e1), 
         output_dir="training_data", 
-        resolution=5, 
+        resolution=1, 
         area_radius=100
     )
