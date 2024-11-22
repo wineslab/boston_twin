@@ -10,8 +10,10 @@ import mitsuba as mi
 import numpy as np
 import pyproj
 import pyproj.crs
+import rasterio
 from collada import Collada, geometry, material, scene, source
 from matplotlib.axes import Axes
+from rasterio.features import rasterize
 from sionna.rt import load_scene
 
 from ..utils.geo_utils import (
@@ -570,7 +572,7 @@ class BostonTwin:
         self.boston_model.generate_scene_from_model_gdf(
             boston_gdf, scene_center, scene_name
         )
-
+        self.current_scene_gdf_lonlat = boston_gdf
         if load:
             self.set_scene(scene_name)
 
@@ -706,3 +708,38 @@ class BostonTwin:
     def _translate_gdf(gdf, xoff, yoff):
         gdf["geometry"] = gdf.translate(xoff=xoff, yoff=yoff)
         return gdf
+    
+    def get_elevation_map(
+            self,
+            resolution=1
+        ):
+        self._check_scene()
+
+        bounds = self.current_scene_gdf_lonlat.total_bounds
+        minx, miny, maxx, maxy = bounds
+
+        # Convert bounds from lat/lon to meters using pyproj
+        minx, miny = self._lonlat2local.transform(minx, miny)
+        maxx, maxy = self._lonlat2local.transform(maxx, maxy)
+
+        # Ensure the elevation map is square
+        side_length = max(maxx - minx, maxy - miny)
+        maxx = minx + side_length
+        maxy = miny + side_length
+
+        width = int(side_length / resolution)
+        height = int(side_length / resolution)
+        
+        transform = rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
+        elevation = np.zeros((height, width), dtype=np.float32)
+        
+        for geom, value in zip(self.current_scene_gdf_lonlat.geometry, self.current_scene_gdf_lonlat['Height_Ft']):
+            value_meters = value * 0.3048  # Convert feet to meters
+            rasterize(
+            [(geom, value_meters)],
+            out=elevation,
+            transform=transform,
+            all_touched=True,
+            dtype=np.float32
+            )
+        return elevation
