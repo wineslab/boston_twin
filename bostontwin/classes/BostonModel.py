@@ -33,16 +33,14 @@ class BostonModel:
 
         self.mesh_dir = dataset_dir.joinpath("meshes")
 
-        self.tiles_dict = self._enumerate_scenes()
-        self.tile_names = list(self.tiles_dict.keys())
+        self.scenes_dict = self._enumerate_scenes()
+        self.scene_names = list(self.scenes_dict.keys())
 
         local_crs_path = dataset_dir.parent.joinpath("BostonTwin.wkt")
         self.local_crs = pyproj.CRS.from_wkt(local_crs_path.read_text())
         self.flat = (
             True  # for now, we don't support ground elevation different from zero
         )
-
-    # def _check_in_model_dir(self):
 
     def _enumerate_scenes(self) -> dict:
         scenes_dict = {}
@@ -89,11 +87,11 @@ class BostonModel:
         smooth=False,
         n_smooth_iterations=1,
     ):
-        if scene_in_name not in self.tile_names:
+        if scene_in_name not in self.scene_names:
             raise KeyError(
-                f"scene_name must correspond to one of the scenes name in {self.dataset_dir}: {self.tile_names}\nInstead: {scene_in_name}"
+                f"scene_name must correspond to one of the scenes name in {self.dataset_dir}: {self.scene_names}\nInstead: {scene_in_name}"
             )
-        scene_in_dict = self.tiles_dict[scene_in_name]
+        scene_in_dict = self.scenes_dict[scene_in_name]
 
         if self.dataset_dir == out_dir:
             raise FileExistsError(
@@ -216,5 +214,5 @@ class BostonModel:
         print(
             f"Scene {scene_name} imported. There were {n_models_scene} models."
         )
-        self.tiles_dict = self._enumerate_scenes()
-        self.tile_names = list(self.tiles_dict.keys())
+        self.scenes_dict = self._enumerate_scenes()
+        self.scene_names = list(self.scenes_dict.keys())

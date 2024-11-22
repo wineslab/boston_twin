@@ -23,6 +23,7 @@ PUBLIC_URL = "https://www.bostonplans.org/3d-data-maps/3d-smart-model/3d-data-do
 BASE_MODEL_URL = "https://maps.bostonplans.org/3d/Bos3d_BldgModels_20230927_OBJ"
 BASE_GROUND_URL = "https://maps.bostonplans.org/3d/Bos3d_Terrain_2011_OBJ"
 
+NU_URL = "https://repository.library.northeastern.edu/downloads/neu:ms35xx11z?datastream_id=content"
 
 def char_range(c1, c2):
     """Generates the characters from `c1` to `c2`, inclusive."""
@@ -47,6 +48,7 @@ class BostonModelDownloader:
         )
 
         self.bostontwin_center = (-71.08765495983191, 42.337479190130736)  # center of the local CRS
+        self.boston_bounds = [-71.187459, 42.240483, -70.927061, 42.390985]
 
         self.set_local_projections()
 
@@ -71,6 +73,26 @@ class BostonModelDownloader:
         self.n_tiles = len(self.tiles_dict)
 
     def download_data(self, save_dir: Union[Path, str], extract_objs=True) -> None:
+        # try:
+        #     zip_dataset_path = save_dir.joinpath("BostonTwinDataset.zip")
+        #     r = requests.get(NU_URL, stream=True, headers={"User-Agent": "'XYZ/3.0'"})
+        #     if not r.status_code == 404:
+        #         print("Downloading the 3D projection file...")
+
+        #         with open(zip_dataset_path, "wb") as fd:
+        #             for chunk in r.iter_content(chunk_size=128):
+        #                 fd.write(chunk)
+
+        #         print("Extracting..")
+        #         with zipfile.ZipFile(zip_dataset_path, "r") as zip_ref:
+        #             zip_ref.extractall(self.out_dataset_dir)
+        #         zip_dataset_path.unlink()
+                
+        #         return
+        # except FileNotFoundError as e:
+        #     print(f"Can't download from the Northeastern repository. Trying the BPDA website. ({e})")
+        #     pass
+
         if self.tiles_dict_path.is_file():
             print(
                 f"Tile dict already exists in {self.tiles_dict_path}. Delete it if you want to download the dataset again."
@@ -283,6 +305,8 @@ class BostonModelDownloader:
         # print(f"Converted all OBJ files to PLY in {t1-t0:.2f} s.")
 
         # scenes are imported and converted to lon lat crs (epsg:4326) by default
+        boston_n_triangles = []
+        boston_n_models = []
         times = []
         valid_model_list = []
         boston_mitsuba_scene_dict = {
@@ -359,7 +383,7 @@ class BostonModelDownloader:
             
             tile_model_catalog_gdf = tile_model_catalog_gdf.to_crs("epsg:4326")
             tile_model_catalog_gdf = tile_model_catalog_gdf[
-                (tile_model_catalog_gdf["Status"] != "History" & tile_model_catalog_gdf["Status"] != "Approved Demo")
+                ((tile_model_catalog_gdf["Status"] != "History") & (tile_model_catalog_gdf["Status"] != "Approved Demo"))
             ]
 
             # drop the z coordinate from the geodataframe for faster processing 
@@ -407,14 +431,6 @@ class BostonModelDownloader:
                         continue
                     
                     ## Convert OBJ to PLY
-                    # obj2ply(
-                    #     tile_model_catalog_path.parent.joinpath(model_name + ".obj"),
-                    #     model_dir.joinpath(model_name + ".ply"),
-                    #     center=[
-                    #         model_info_from_json["Centr_X_Ft"],
-                    #         model_info_from_json["Centr_Y_Ft"],
-                    #     ],
-                    # )
                     model_center, model_n_tri = obj2ply_crs_conversion(
                         tile_model_catalog_path.parent.joinpath(model_name + ".obj"),
                         model_dir.joinpath(model_name + ".ply"),
@@ -467,19 +483,18 @@ class BostonModelDownloader:
             tile_info = gpd.GeoDataFrame.from_file(
                 self.tiles_dict[tile_name]["tile_info_path"]
             )
-            # tile_info["Centr_X_Ft"] = self.tiles_dict[tile_name]["center_x_ft"]
-            # tile_info["Centr_Y_Ft"] = self.tiles_dict[tile_name]["center_y_ft"]
-            # tile_info["Centr_X_m"] = self.tiles_dict[tile_name]["center_x_m"]
-            # tile_info["Centr_Y_m"] = self.tiles_dict[tile_name]["center_y_m"]
             tile_info["center_lon"] = self.tiles_dict[tile_name]["center_lon"]
-            tile_info["center_lon"] = self.tiles_dict[tile_name]["center_lat"]
+            tile_info["center_lat"] = self.tiles_dict[tile_name]["center_lat"]
             tile_info["n_models"] = n_models_tile
-            # tile_info["n_triangles"] = tile_n_tri
+            tile_info["n_triangles"] = sum(triangles_list)
             tile_info.to_file(output_tile_info_path, driver="GeoJSON")
 
             print(
                 f"Tile {tile_name} imported. There were {n_models_tile} models."
             )
+            
+            boston_n_triangles.append(sum(triangles_list))
+            boston_n_models.append(n_models_tile)
             t1 = time.perf_counter()
             print_eta(t0, t1, times, tile_idx, self.n_tiles)
         output_boston_scene_path = self.out_dataset_dir.joinpath("boston" + ".xml")
@@ -487,6 +502,13 @@ class BostonModelDownloader:
             boston_mitsuba_scene_dict, str(output_boston_scene_path.resolve())
         )
 
+        tile_info = gpd.GeoDataFrame(geometry=[box(*self.boston_bounds)], columns=["geometry"], crs="epsg:4326")
+        tile_info["center_lon"] = self.bostontwin_center[0]
+        tile_info["center_lat"] = self.bostontwin_center[1]
+        tile_info["n_models"] = n_models_tile
+        tile_info["n_triangles"] = sum(triangles_list)
+        tile_info.to_file(self.out_dataset_dir.joinpath("boston_tileinfo.geojson"), driver="GeoJSON")
+        
         output_boston_gdf_path = self.out_dataset_dir.joinpath("boston" + ".geojson")
         self._aggregate_geojson(output_boston_gdf_path, valid_model_list)
 
@@ -551,7 +573,7 @@ class BostonModelDownloader:
     @staticmethod
     def check_model_info(model_info_from_catalog, model_info_from_json, model_name):
         ## Read model info
-        if model_info_from_json["Status"]=="Approved Demo" or model_info_from_json["Status"]=="History":
+        if (model_info_from_json["Status"]=="Approved Demo") or (model_info_from_json["Status"]=="History"):
             print(f"Model {model_name} is not current ({model_info_from_json['Status']}). Skipping.")
             return False
 

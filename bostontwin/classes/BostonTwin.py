@@ -19,8 +19,6 @@ from ..utils.geo_utils import (
     gdf2crs,
     plot_geodf,
 )
-
-# from .BostonAntennas import BostonAntennas
 from .BostonModel import BostonModel
 
 
@@ -28,60 +26,71 @@ class BostonTwin:
     """BostonTwin Class
 
     The BostonTwin class implements BostonTwin, the Boston Digital Twin for wireless communications.
-    The class contains two main variables:
-    - `boston_model`, that includes a number of methods to access the 3D model of the structures in Boston (buildings, bridges, walls, etc..)
-    - `boston_antennas`, that includes the georeferenced locations to the wireless antennas in Boston
-
-    Attributes
-    ----------
-    dataset_dir : Path
-        Path to the Boston Twin.
-    boston_model_path : Path
-        Path to the Boston Model folder (dataset_dir/boston3d).
-    boston_model : BostonModel
-        BostonModel instance, containing the information on the 3D model of the structures in Boston.
-    boston_antennas_path : Union[Path, str]
-        Default path to the GeoDataFrame containing the georeferenced locations to the wireless antennas in Boston.
-    current_scene_name : str
-        Name of the current scene.
-    current_scene_gdf : geopandas.GeoDataFrame
-        GeoDataFrame containing the information on the structures of the current scene.
-    current_sionna_scene : sionna.rt.Scene
-        Sionna Scene instance of the current scene.
-    current_mi_scene : mitsuba.Scene
-        Mitsuba Scene instance of the current scene.
     """
 
     def __init__(
         self,
         dataset_dir: Union[Path, str] = Path("dataset"),
     ):
+        """Initialize the BostonTwin instance.
+        
+        Parameters
+        ----------
+        dataset_dir : Union[Path, str], optional
+            Path to the Boston Twin dataset directory. Defaults to Path("dataset").
+        """
         if isinstance(dataset_dir, str):
             dataset_dir = Path(dataset_dir)
-        self.dataset_dir = dataset_dir
-        
-        self.boston_model_path = dataset_dir.joinpath("scenes")
-        self.boston_model = BostonModel(self.boston_model_path)
-        
-        self.boston_antennas_path = dataset_dir.joinpath("antennas", "boston_antennas.geojson")
-        self.boston_antennas_gdf_lonlat = gpd.read_file(self.boston_antennas_path, crs="EPSG:4326")
+        self.dataset_dir:Path = dataset_dir
+        "Path to the Boston Twin."
 
-        self._local_crs = self.boston_model.local_crs
-        self._lonlat2local = pyproj.Transformer.from_crs(
+        self.boston_model_path:Path = dataset_dir.joinpath("scenes")
+        "Path to the Boston Model folder (dataset_dir/boston3d)."
+        
+        self.boston_model:BostonModel = BostonModel(self.boston_model_path)
+        "BostonModel instance, containing the information on the 3D model of the structures in Boston."
+
+        ### CRS and transformers
+        self._local_crs:pyproj.CRS = self.boston_model.local_crs
+        "Local Coordinate Reference System of the Boston Twin."
+        
+        self._lonlat2local:pyproj.Transformer = pyproj.Transformer.from_crs(
             "EPSG:4236", self._local_crs, always_xy=True
         )
-        self._local2lonlat = pyproj.Transformer.from_crs(
+        "Transformer from geographic to local CRS."
+        self._local2lonlat:pyproj.Transformer = pyproj.Transformer.from_crs(
             self._local_crs, "EPSG:4236", always_xy=True
         )
+        "Transformer from local to geographic CRS."
 
-        self.current_scene_name = ""
-        self.current_scene_gdf_localcrs = None
+        ### Antennas
+        self.boston_antennas_path:Path = dataset_dir.joinpath(
+            "antennas", "boston_antennas.geojson"
+        )
+        "Path to the GeoDataFrame containing the georeferenced locations to the wireless antennas in Boston."
+        self.boston_antennas_gdf_lonlat:gpd.GeoDataFrame = gpd.read_file(
+            self.boston_antennas_path, crs="EPSG:4326"
+        )
+        "GeoDataFrame containing the antennas location in geographic coordinates."
+        self.boston_antennas_gdf_localcrs:gpd.GeoDataFrame = gdf2crs(
+            self.boston_antennas_gdf_lonlat, self._local2lonlat
+        )
+        "GeoDataFrame containing the antennas location in the local CRS of the Boston Twin."
+
+        ### Scene
+        self.current_scene_name:str = ""
+        "Name of the current scene."
+        self.current_scene_gdf_localcrs:gpd.GeoDataFrame = None
+        "GeoDataFrame containing the information on the structures of the current scene in the local CRS."
         self.current_sionna_scene = None
+        "Sionna Scene instance of the current scene."
         self._current_mi_scene = None
-        self._current_antennas = None
+        "Mitsuba Scene instance of the current scene."
+        self._current_scene_antennas = None
+        "GeoDataFrame containing the antennas location in the current scene."
 
     def _check_scene(self):
-        if self.current_scene_name is None:
+        if self.current_scene_name is None or self.current_scene_name == "":
             raise ValueError(
                 "Scene not set! Run the set_scene(<scene_name>) method specifying the scene name."
             )
@@ -133,7 +142,7 @@ class BostonTwin:
         list
             List of the names of scenes available in BostonTwin.
         """
-        return self.boston_model.tile_names
+        return self.boston_model.scene_names
 
     def set_scene(self, scene_name: str):
         """Set the current scene to `scene_name`.
@@ -145,25 +154,25 @@ class BostonTwin:
         """
         self.current_scene_name = scene_name
 
-        if scene_name not in self.boston_model.tile_names:
+        if scene_name not in self.boston_model.scene_names:
             raise ValueError(f"Scene {scene_name} not found in BostonTwin")
-        self.tile_info_path = self.boston_model.tiles_dict[self.current_scene_name][
+        self.tile_info_path = self.boston_model.scenes_dict[self.current_scene_name][
             "tileinfo_path"
         ]
 
         self.current_scene_info_gdf = gpd.GeoDataFrame.from_file(self.tile_info_path)
-        
-        self.geo_scene_path = self.boston_model.tiles_dict[self.current_scene_name][
+
+        self.geo_scene_path = self.boston_model.scenes_dict[self.current_scene_name][
             "geo_scene_path"
         ]
 
-        self.mi_scene_path = self.boston_model.tiles_dict[self.current_scene_name][
+        self.mi_scene_path = self.boston_model.scenes_dict[self.current_scene_name][
             "mi_scene_path"
         ]
-        
-        self._current_antennas = self._get_antenna_location_from_bb(
-                *self.current_scene_info_gdf.total_bounds
-            )
+
+        self._current_scene_antennas = self._get_antenna_location_from_bb(
+            *self.current_scene_info_gdf.total_bounds
+        )
 
     def _load_mi_scene(self):
         self._check_scene()
@@ -184,22 +193,37 @@ class BostonTwin:
         return self.boston_antennas_gdf_lonlat.cx[xmin:xmax, ymin:ymax].reset_index(
             drop=True
         )
-    
-    def get_scene_antennas(self):
 
-        return self._current_antennas
+    def get_scene_antennas(self):
+        """Get the coordinates of all the antennas in the current scene.
+
+        Returns
+        -------
+        antennas_lonlat : gpd.GeoDataFrame
+            GeoDataFrame containing the antennas location in geographic coordinates."""
+        return self._current_scene_antennas
 
     def get_boston_antennas(self):
+        """Get the coordinates of all the antennas in Boston.
+
+        Returns
+        -------
+        antennas_lonlat : gpd.GeoDataFrame
+            GeoDataFrame containing the antennas location in geographic coordinates.
+        antennas_local : gpd.GeoDataFrame
+            GeoDataFrame containing the antennas location in the local CRS of the current scene.
+        """
         return self.get_antennas_from_geodf(self.boston_antennas_path)
 
     def get_antennas_from_geodf(self, geodf_path: Union[Path, str]):
         """Load the antennas from the GeoDataFrame at `geodf_path`.
-        
+        This method is useful to load antennas from a different file than the default one, and to convert the antennas to the local CRS of the BostonTwin.
+
         Parameters
         ----------
         geodf_path : Union[Path, str]
             Path to the GeoDataFrame containing the antennas location. It must be in geographic coordinates (EPSG:4326).
-        
+
         Returns
         -------
         antennas_lonlat : gpd.GeoDataFrame
@@ -213,17 +237,36 @@ class BostonTwin:
         else:
             antennas_lonlat = gpd.read_file(geodf_path)
         if not antennas_lonlat.crs.is_geographic:
-            raise ValueError("The GeoDataFrame must be in geographic coordinates (EPSG:4326).")
+            raise ValueError(
+                "The GeoDataFrame must be in geographic coordinates (EPSG:4326)."
+            )
 
         antennas_local = gdf2crs(antennas_lonlat, self._lonlat2local)
         return antennas_lonlat, antennas_local
 
-    def lonlat2local(self, lonlat_coords: Iterable[Tuple[float, float]]) -> List[Tuple[float, float]]:
-        if len(lonlat_coords)==2:
+    def lonlat2local(
+        self, lonlat_coords: Iterable[Tuple[float, float]]
+    ) -> List[Tuple[float, float]]:
+        """Convert `lonlat_coords` from geographic to the local CRS of the current scene.
+
+        Parameters
+        ----------
+        lonlat_coords : Iterable[Tuple[float, float]]
+            List of geographic coordinates (lon, lat) to be converted.
+
+        Returns
+        -------
+        local_coords : List[Tuple[float, float]]
+            List of the coordinates in the local CRS of the Boston Twin.
+        """
+        if len(lonlat_coords) == 2:
             if isinstance(lonlat_coords[0], (int, float)):
                 lonlat_coords = [lonlat_coords]
         # check_area_of_use(pyproj.CRS.from_epsg("4326"), self._localcrs, lonlat_coords)
         local_coords = [self._lonlat2local.transform(*coord) for coord in lonlat_coords]
+
+        if len(local_coords) == 1:
+            return local_coords[0]
         return local_coords
 
     def _get_mi_scene(self):
@@ -263,7 +306,7 @@ class BostonTwin:
         if load_geodf:
             self.current_scene_gdf_localcrs = self._load_scene_geodf(scene_name)
 
-        return self.current_sionna_scene
+        return self.current_sionna_scene, self._current_scene_antennas
 
     def plot_buildings(
         self, basemap: bool = False, local_crs: bool = False, **plot_kwargs
@@ -279,7 +322,7 @@ class BostonTwin:
 
         Returns
         -------
-        ax : Axes
+        ax : matplotlib.axes.Axes
             Building footprint plot.
         """
 
@@ -319,17 +362,17 @@ class BostonTwin:
 
         Returns
         -------
-        ax : Axes
+        ax : matplotlib.axes.Axes
             Antenna location plot.
         """
-        
+
         antennas_is_local = None
-        
+
         if antennas is None:
-            if self._current_antennas is None:
+            if self._current_scene_antennas is None:
                 antennas = self.get_scene_antennas()
             else:
-                antennas = self._current_antennas
+                antennas = self._current_scene_antennas
 
         if isinstance(antennas, gpd.GeoDataFrame):
             if antennas.crs.is_geographic:
@@ -337,24 +380,27 @@ class BostonTwin:
             elif antennas.crs == self._local_crs:
                 antennas_is_local = True
         elif all(isinstance(x, tuple) for x in antennas):
-            if all([check_point_in_area_of_use(
-                "EPSG:4326", x) for x in antennas]):
+            if all([check_point_in_area_of_use("EPSG:4326", x) for x in antennas]):
                 antennas_is_local = True
                 antennas = gpd.GeoDataFrame(
                     geometry=gpd.points_from_xy(*zip(*antennas)),
                     crs="EPSG:4326",
                 )
-            elif all([check_point_in_area_of_use(self._local_crs, x) for x in antennas]):
+            elif all(
+                [check_point_in_area_of_use(self._local_crs, x) for x in antennas]
+            ):
                 antennas_is_local = False
                 antennas = gpd.GeoDataFrame(
                     geometry=gpd.points_from_xy(*zip(*antennas)),
                     crs=self._local_crs,
                 )
             else:
-                raise ValueError("The antennas must be in either the local CRS or geographic coordinates.")
+                raise ValueError(
+                    "The antennas must be in either the local CRS or geographic coordinates."
+                )
         else:
             raise ValueError("The antennas must be a GeoDataFrame or a list of tuples.")
-        
+
         if local_crs:
             if not antennas_is_local:
                 plot_gdf = gdf2crs(antennas, self._lonlat2local)
@@ -398,7 +444,7 @@ class BostonTwin:
                 #         match_id, "Name"
                 #     ].values[0]
                 # else:
-                name_text = row['ID']
+                name_text = row["ID"]
 
                 ax.annotate(
                     text=name_text,
@@ -410,7 +456,13 @@ class BostonTwin:
 
         return ax
 
-    def plot_twin(self, basemap: bool = False, local_crs : bool = False, annotate : bool = False, ax : plt.Axes = None) -> Axes:
+    def plot_twin(
+        self,
+        basemap: bool = False,
+        local_crs: bool = False,
+        annotate: bool = False,
+        ax: plt.Axes = None,
+    ) -> Axes:
         """Plot the location of the antennas and the building footprint.
 
         Parameters
@@ -424,17 +476,19 @@ class BostonTwin:
 
         Returns
         -------
-        ax : Axes
+        ax : matplotlib.axes.Axes
             Plot of the antennas among the building 2D footprint.
         """
 
-        if basemap and local_crs:
-            raise ValueError(
-                "'basemap' and 'local_crs' are currently incompatible. Please choose one."
-            )
+        # if basemap and local_crs:
+        #     raise ValueError(
+        #         "'basemap' and 'local_crs' are currently incompatible. Please choose one."
+        #     )
 
         ax = self.plot_buildings(basemap=basemap, color="k", local_crs=local_crs, ax=ax)
-        ax = self.plot_antennas(basemap=False, ax=ax, color="r", local_crs=local_crs, annotate=annotate)
+        ax = self.plot_antennas(
+            basemap=False, ax=ax, color="r", local_crs=local_crs, annotate=annotate
+        )
         return ax
 
     def generate_scene_from_radius(
@@ -460,18 +514,48 @@ class BostonTwin:
         load : bool, optional
             Load the scene as current scene. Defaults to False.
         """
-        radius = np.sqrt(2) * side_m/2  # m
+        radius = np.sqrt(2) * side_m / 2  # m
         azimuths = [45, 225]
 
         geod = pyproj.Geod(ellps="WGS84")
         lon1, lat1, _ = geod.fwd(center_lon, center_lat, azimuths[0], radius)
         lon2, lat2, _ = geod.fwd(center_lon, center_lat, azimuths[1], radius)
         bbox = (lon1, lat1, lon2, lat2)
-        self.generate_scene_from_bbox(scene_name, bbox, scene_center_lon=center_lon, scene_center_lat=center_lat, load=False)
+        self.generate_scene_from_bbox(
+            scene_name,
+            bbox,
+            scene_center_lon=center_lon,
+            scene_center_lat=center_lat,
+            load=load,
+        )
 
-    def generate_scene_from_bbox(self, scene_name:str, bbox:tuple, scene_center_lon:float=None,scene_center_lat:float=None, load:bool=False):
+    def generate_scene_from_bbox(
+        self,
+        scene_name: str,
+        bbox: tuple,
+        scene_center_lon: float = None,
+        scene_center_lat: float = None,
+        load: bool = False,
+    ):
+        """Generate a new scene specifying its bounding box.
+
+        Parameters
+        ----------
+        scene_name : str
+            Name of the new scene.
+        bbox : tuple
+            Bounding box of the scene in (lon1,lat1,lon2,lat2).
+        scene_center_lon : float, optional
+            Longitude of the center of the scene. Defaults to None.
+        scene_center_lat : float, optional
+            Latitude of the center of the scene. Defaults to None.
+        load : bool, optional
+            Load the scene as current scene. Defaults to False.
+        """
         if scene_center_lon is None and scene_center_lat is None:
-            print("The new scene center was not provided. Using the center of the bounding box in (lon,lat) as approximation.")
+            print(
+                "The new scene center was not provided. Using the center of the bounding box in (lon,lat) as approximation."
+            )
             scene_center_lon = (bbox[0] + bbox[2]) / 2
             scene_center_lat = (bbox[1] + bbox[3]) / 2
         print("Selecting models within the area...")
@@ -489,7 +573,7 @@ class BostonTwin:
 
         if load:
             self.set_scene(scene_name)
-        
+
     def export_scene_antennas(self, out_path: Union[Path, str]):
         """Export to file the location (in the local CRS) of the antennas in the current scene.
 
@@ -514,9 +598,9 @@ class BostonTwin:
         with open(out_path, "w") as f:
             json.dump(self._node_pos_dict, f, indent=4)
 
-    def export_scene_models(self, out_path: Union[Path,str]):
+    def export_scene_models(self, out_path: Union[Path, str]):
         """Copy the scene files (`<scene_name>.xml`, `<scene_name>.geojson`, `<scene_name>_tileinfo.geojson`, and the corresponding PLY meshes) to `out_path`.
-        
+
         Parameters
         ----------
         out_path : Union[Path,str]
@@ -546,12 +630,19 @@ class BostonTwin:
         # copy meshes
         new_mesh_path = out_path.joinpath("meshes")
         new_mesh_path.mkdir(exist_ok=True, parents=True)
-        for mesh_id in self.boston_model.tiles_dict[self.scene_name]["models"]:
+        for mesh_id in self.boston_model.scenes_dict[self.scene_name]["models"]:
             mesh_in_path = self.boston_model.mesh_dir.joinpath(mesh_id + ".ply")
             mesh_out_path = self.new_mesh_path.joinpath(mesh_id + ".ply")
-            shutil.copy(mesh_in_path,mesh_out_path)
+            shutil.copy(mesh_in_path, mesh_out_path)
 
-    def export_scene_collada(self, out_path: Union[Path,str]):
+    def export_scene_collada(self, out_path: Union[Path, str]):
+        """Export the scene to a Collada file.
+        
+        Parameters
+        ----------
+        out_path : Union[Path,str]
+            Path where to export the Collada file.
+        """
         if not out_path.is_dir():
             if out_path.suffix.lower() != "":
                 raise ValueError(f"out_path must point to a folder. Instead {out_path}")
@@ -569,21 +660,25 @@ class BostonTwin:
             mi_mesh_params = mi.traverse(mi_mesh)
             mi_vertices = mi_mesh_params["vertex_positions"]
             mi_vertices = np.array(mi_vertices, dtype=np.float32).reshape(-1, 3)
-            mi_vertices[:, [1,2]] = mi_vertices[:, [2,1]]
+            mi_vertices[:, [1, 2]] = mi_vertices[:, [2, 1]]
             mi_vertices[:, 2] = -mi_vertices[:, 2]
             # print(mi_vertices[:10,:])
-            mi_faces = np.array(mi_mesh_params["faces"],dtype=np.int32).reshape(-1, 3)
+            mi_faces = np.array(mi_mesh_params["faces"], dtype=np.int32).reshape(-1, 3)
             # mi_normals = estimate_normals(mi_vertices, mi_faces)
             mi_material = mi_mesh.bsdf().id()
             # mi_material_ref = mi_mesh.bsdf()
             vert_src = source.FloatSource(mi_mesh_id, mi_vertices, ("X", "Y", "Z"))
             # normal_src = source.FloatSource("normals", mi_normals, ('X', 'Y', 'Z'))
 
-            effect = material.Effect("effect", [], "phong", diffuse=(1, 0, 0), specular=(0, 1, 0))
+            effect = material.Effect(
+                "effect", [], "phong", diffuse=(1, 0, 0), specular=(0, 1, 0)
+            )
             mat = material.Material(mi_material, mi_material, effect=effect)
             mesh.materials.append(mat)
 
-            geom = geometry.Geometry(mesh, f"geometry-{mi_mesh_id}", mi_mesh_id, [vert_src])  # , normal_src])
+            geom = geometry.Geometry(
+                mesh, f"geometry-{mi_mesh_id}", mi_mesh_id, [vert_src]
+            )  # , normal_src])
 
             input_list = source.InputList()
             input_list.addInput(0, "VERTEX", f"#{mi_mesh_id}")
@@ -606,11 +701,8 @@ class BostonTwin:
         print(f"Writing Collada file to {out_file}")
         mesh.write(out_file)
 
-        
-        
-        
     # Static Methods
     @staticmethod
-    def translate_gdf(gdf, xoff, yoff):
+    def _translate_gdf(gdf, xoff, yoff):
         gdf["geometry"] = gdf.translate(xoff=xoff, yoff=yoff)
         return gdf
