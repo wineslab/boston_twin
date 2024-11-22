@@ -4,8 +4,8 @@ __pycache__/
 __MACOSX/
 *.pyc
 *.zip
-
-
+*.ply
+*.obj
 
 
 # Byte-compiled / optimized / DLL files
