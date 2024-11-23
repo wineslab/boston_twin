@@ -709,37 +709,55 @@ class BostonTwin:
         gdf["geometry"] = gdf.translate(xoff=xoff, yoff=yoff)
         return gdf
     
-    def get_elevation_map(
-            self,
-            resolution=1
-        ):
+    def get_elevation_map(self, resolution=1):
         self._check_scene()
 
+        # Get the bounds of the scene
         bounds = self.current_scene_gdf_lonlat.total_bounds
         minx, miny, maxx, maxy = bounds
 
-        # Convert bounds from lat/lon to meters using pyproj
+        # Convert bounds from geographic to local CRS (in meters)
         minx, miny = self._lonlat2local.transform(minx, miny)
         maxx, maxy = self._lonlat2local.transform(maxx, maxy)
 
-        # Ensure the elevation map is square
+        # Ensure the elevation map is square for uniform resolution
         side_length = max(maxx - minx, maxy - miny)
         maxx = minx + side_length
         maxy = miny + side_length
 
+        # Calculate the number of pixels for the raster grid
         width = int(side_length / resolution)
         height = int(side_length / resolution)
-        
+
+        # Define the transform for the raster grid
         transform = rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
+
+        # Create an empty elevation map
         elevation = np.zeros((height, width), dtype=np.float32)
-        
-        for geom, value in zip(self.current_scene_gdf_lonlat.geometry, self.current_scene_gdf_lonlat['Height_Ft']):
-            value_meters = value * 0.3048  # Convert feet to meters
-            rasterize(
-            [(geom, value_meters)],
-            out=elevation,
-            transform=transform,
-            all_touched=True,
-            dtype=np.float32
+
+        # Iterate over the geometries in the GeoDataFrame
+        for geom, value in zip(
+            self.current_scene_gdf_lonlat.geometry, 
+            self.current_scene_gdf_lonlat.get('Height_Ft', [])
+        ):
+            # Skip geometries without valid height
+            if value is None:
+                continue
+
+            # Convert height from feet to meters
+            value_meters = value * 0.3048
+
+            # Rasterize the geometry onto the elevation map
+            rasterized = rasterize(
+                [(geom, value_meters)],  # Each tuple contains geometry and height
+                out_shape=elevation.shape,
+                transform=transform,
+                fill=0,
+                all_touched=True,
+                dtype=np.float32,
             )
-        return elevation
+
+            # Combine the rasterized geometry with the elevation map
+            elevation = np.maximum(elevation, rasterized)
+        return elevation, transform
+
