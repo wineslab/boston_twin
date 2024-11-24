@@ -502,12 +502,12 @@ class BostonModelDownloader:
             boston_mitsuba_scene_dict, str(output_boston_scene_path.resolve())
         )
 
-        tile_info = gpd.GeoDataFrame(geometry=[box(*self.boston_bounds)], columns=["geometry"], crs="epsg:4326")
-        tile_info["center_lon"] = self.bostontwin_center[0]
-        tile_info["center_lat"] = self.bostontwin_center[1]
-        tile_info["n_models"] = n_models_tile
-        tile_info["n_triangles"] = sum(triangles_list)
-        tile_info.to_file(self.out_dataset_dir.joinpath("boston_tileinfo.geojson"), driver="GeoJSON")
+        boston_info = gpd.GeoDataFrame(geometry=[box(*self.boston_bounds)], columns=["geometry"], crs="epsg:4326")
+        boston_info["center_lon"] = self.bostontwin_center[0]
+        boston_info["center_lat"] = self.bostontwin_center[1]
+        boston_info["n_models"] = sum(boston_n_models)
+        boston_info["n_triangles"] = sum(boston_n_triangles)
+        boston_info.to_file(self.out_dataset_dir.joinpath("boston_tileinfo.geojson"), driver="GeoJSON")
         
         output_boston_gdf_path = self.out_dataset_dir.joinpath("boston" + ".geojson")
         self._aggregate_geojson(output_boston_gdf_path, valid_model_list)

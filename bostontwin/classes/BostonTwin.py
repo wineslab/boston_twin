@@ -294,8 +294,6 @@ class BostonTwin:
         -------
         current_sionna_scene : sionna.rt.scene
             The sionna.rt.Scene representing the current scene.
-        current_scene_antennas : gpd.GeoDataFrame
-            A Geopandas GeoDataFrame containing the information and location of the antennas present in the current scene.
         """
         self.set_scene(scene_name)
 
@@ -308,7 +306,7 @@ class BostonTwin:
         if load_geodf:
             self.current_scene_gdf_localcrs = self._load_scene_geodf(scene_name)
 
-        return self.current_sionna_scene, self._current_scene_antennas
+        return self.current_sionna_scene
 
     def plot_buildings(
         self, basemap: bool = False, local_crs: bool = False, **plot_kwargs
