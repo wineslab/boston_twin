@@ -1,12 +1,25 @@
+import zipfile
 from pathlib import Path
 
-from bostontwin.utils.BostonModelDownloader import BostonModelDownloader
+import requests
 
-# Download the data
-in_model_dir = Path("tmp_data/downloaded_data")
-in_model_dir.mkdir(parents=True, exist_ok=True)
-out_dataset_dir = Path("dataset", "scenes")
-bos_downloader = BostonModelDownloader(
-        in_model_dir,
-        out_dataset_dir)
-bos_downloader.download_data(save_dir=in_model_dir, extract_objs=True)
+NU_URL = "https://repository.library.northeastern.edu/downloads/neu:ms35xx11z?datastream_id=content"
+
+download_dir = Path(".")
+try:
+    print("Downloading the dataset from the Northeastern repository..")
+    zip_dataset_path = download_dir.joinpath("BostonTwinDataset.zip")
+    r = requests.get(NU_URL, stream=True, headers={"User-Agent": "'XYZ/3.0'"})
+    if not r.status_code == 404:
+        with open(zip_dataset_path, "wb") as fd:
+            for chunk in r.iter_content(chunk_size=128):
+                fd.write(chunk)
+
+        print("Extracting..")
+        with zipfile.ZipFile(zip_dataset_path, "r") as zip_ref:
+            zip_ref.extractall(download_dir)
+        zip_dataset_path.unlink()
+except FileNotFoundError as e:
+    print(
+        f"Can't download from the Northeastern repository. Try the BPDA website. ({e})"
+    )

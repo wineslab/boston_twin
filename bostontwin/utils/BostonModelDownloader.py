@@ -74,10 +74,10 @@ class BostonModelDownloader:
 
     def download_data(self, save_dir: Union[Path, str], extract_objs=True) -> None:
         try:
+            print("Downloading the dataset from the Northeastern repository..")
             zip_dataset_path = save_dir.joinpath("BostonTwinDataset.zip")
             r = requests.get(NU_URL, stream=True, headers={"User-Agent": "'XYZ/3.0'"})
             if not r.status_code == 404:
-                print("Downloading the 3D projection file...")
 
                 with open(zip_dataset_path, "wb") as fd:
                     for chunk in r.iter_content(chunk_size=128):
