@@ -73,25 +73,25 @@ class BostonModelDownloader:
         self.n_tiles = len(self.tiles_dict)
 
     def download_data(self, save_dir: Union[Path, str], extract_objs=True) -> None:
-        # try:
-        #     zip_dataset_path = save_dir.joinpath("BostonTwinDataset.zip")
-        #     r = requests.get(NU_URL, stream=True, headers={"User-Agent": "'XYZ/3.0'"})
-        #     if not r.status_code == 404:
-        #         print("Downloading the 3D projection file...")
+        try:
+            zip_dataset_path = save_dir.joinpath("BostonTwinDataset.zip")
+            r = requests.get(NU_URL, stream=True, headers={"User-Agent": "'XYZ/3.0'"})
+            if not r.status_code == 404:
+                print("Downloading the 3D projection file...")
 
-        #         with open(zip_dataset_path, "wb") as fd:
-        #             for chunk in r.iter_content(chunk_size=128):
-        #                 fd.write(chunk)
+                with open(zip_dataset_path, "wb") as fd:
+                    for chunk in r.iter_content(chunk_size=128):
+                        fd.write(chunk)
 
-        #         print("Extracting..")
-        #         with zipfile.ZipFile(zip_dataset_path, "r") as zip_ref:
-        #             zip_ref.extractall(self.out_dataset_dir)
-        #         zip_dataset_path.unlink()
+                print("Extracting..")
+                with zipfile.ZipFile(zip_dataset_path, "r") as zip_ref:
+                    zip_ref.extractall(self.out_dataset_dir)
+                zip_dataset_path.unlink()
                 
-        #         return
-        # except FileNotFoundError as e:
-        #     print(f"Can't download from the Northeastern repository. Trying the BPDA website. ({e})")
-        #     pass
+                return
+        except FileNotFoundError as e:
+            print(f"Can't download from the Northeastern repository. Trying the BPDA website. ({e})")
+            pass
 
         if self.tiles_dict_path.is_file():
             print(
@@ -214,6 +214,9 @@ class BostonModelDownloader:
         self.update_tiles_dict_json()
 
         print("Done.")
+        print("Starting the scene generation..")
+        self.generate_dataset(create_xml=True)
+        print("Done. You can now use the BostonTwin.")
 
     def _enumerate_tiles(self) -> dict:
         centers_x_m = []
@@ -601,3 +604,5 @@ class BostonModelDownloader:
         ), f"Mismatch between catalog (center: ({center_x_ft_from_catalog}, {center_y_ft_from_catalog})) and info.json (center: ({center_x_ft_from_info}, {center_y_ft_from_info}))"
 
         return True
+
+# %%
