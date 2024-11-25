@@ -170,8 +170,8 @@ class BostonModel:
         #                     scene_center_lon_lat=[scene_center["center_lon"], scene_center["center_lat"]])
         scene_crs = self.local_crs
         scene_transformer = Transformer.from_crs("EPSG:4326", scene_crs, always_xy=True)
-        with open(self.dataset_dir.joinpath(f"{scene_name}.wkt"), "w") as f:
-            f.write(scene_crs.to_wkt(output_axis_rule=True))
+        # with open(self.dataset_dir.joinpath(f"{scene_name}.wkt"), "w") as f:
+        #     f.write(scene_crs.to_wkt(output_axis_rule=True))
 
         model_gdf_local = gdf2crs(model_gdf, scene_transformer)
         xmin, ymin, xmax, ymax = model_gdf_local.total_bounds
@@ -204,10 +204,8 @@ class BostonModel:
             ground_size=max(scene_size_x, scene_size_y),
             ground_center=[scene_center_local[0], scene_center_local[1]],
         )
-        tile_info["Centr_X_m"] = scene_center_local[0]
-        tile_info["Centr_Y_m"] = scene_center_local[1]
-        tile_info["Centr_lon"] = scene_center["center_lon"]
-        tile_info["Centr_lat"] = scene_center["center_lat"]
+        tile_info["center_lon"] = scene_center["center_lon"]
+        tile_info["center_lat"] = scene_center["center_lat"]
         tile_info["n_models"] = n_models_scene
         tile_info.to_file(output_scene_info_path, driver="GeoJSON")
 

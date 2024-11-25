@@ -73,25 +73,25 @@ class BostonModelDownloader:
         self.n_tiles = len(self.tiles_dict)
 
     def download_data(self, save_dir: Union[Path, str], extract_objs=True) -> None:
-        # try:
-        #     zip_dataset_path = save_dir.joinpath("BostonTwinDataset.zip")
-        #     r = requests.get(NU_URL, stream=True, headers={"User-Agent": "'XYZ/3.0'"})
-        #     if not r.status_code == 404:
-        #         print("Downloading the 3D projection file...")
+        try:
+            print("Downloading the dataset from the Northeastern repository..")
+            zip_dataset_path = save_dir.joinpath("BostonTwinDataset.zip")
+            r = requests.get(NU_URL, stream=True, headers={"User-Agent": "'XYZ/3.0'"})
+            if not r.status_code == 404:
 
-        #         with open(zip_dataset_path, "wb") as fd:
-        #             for chunk in r.iter_content(chunk_size=128):
-        #                 fd.write(chunk)
+                with open(zip_dataset_path, "wb") as fd:
+                    for chunk in r.iter_content(chunk_size=128):
+                        fd.write(chunk)
 
-        #         print("Extracting..")
-        #         with zipfile.ZipFile(zip_dataset_path, "r") as zip_ref:
-        #             zip_ref.extractall(self.out_dataset_dir)
-        #         zip_dataset_path.unlink()
+                print("Extracting..")
+                with zipfile.ZipFile(zip_dataset_path, "r") as zip_ref:
+                    zip_ref.extractall(self.out_dataset_dir)
+                zip_dataset_path.unlink()
                 
-        #         return
-        # except FileNotFoundError as e:
-        #     print(f"Can't download from the Northeastern repository. Trying the BPDA website. ({e})")
-        #     pass
+                return
+        except FileNotFoundError as e:
+            print(f"Can't download from the Northeastern repository. Trying the BPDA website. ({e})")
+            pass
 
         if self.tiles_dict_path.is_file():
             print(
@@ -214,6 +214,9 @@ class BostonModelDownloader:
         self.update_tiles_dict_json()
 
         print("Done.")
+        print("Starting the scene generation..")
+        self.generate_dataset(create_xml=True)
+        print("Done. You can now use the BostonTwin.")
 
     def _enumerate_tiles(self) -> dict:
         centers_x_m = []
@@ -502,12 +505,12 @@ class BostonModelDownloader:
             boston_mitsuba_scene_dict, str(output_boston_scene_path.resolve())
         )
 
-        tile_info = gpd.GeoDataFrame(geometry=[box(*self.boston_bounds)], columns=["geometry"], crs="epsg:4326")
-        tile_info["center_lon"] = self.bostontwin_center[0]
-        tile_info["center_lat"] = self.bostontwin_center[1]
-        tile_info["n_models"] = n_models_tile
-        tile_info["n_triangles"] = sum(triangles_list)
-        tile_info.to_file(self.out_dataset_dir.joinpath("boston_tileinfo.geojson"), driver="GeoJSON")
+        boston_info = gpd.GeoDataFrame(geometry=[box(*self.boston_bounds)], columns=["geometry"], crs="epsg:4326")
+        boston_info["center_lon"] = self.bostontwin_center[0]
+        boston_info["center_lat"] = self.bostontwin_center[1]
+        boston_info["n_models"] = sum(boston_n_models)
+        boston_info["n_triangles"] = sum(boston_n_triangles)
+        boston_info.to_file(self.out_dataset_dir.joinpath("boston_tileinfo.geojson"), driver="GeoJSON")
         
         output_boston_gdf_path = self.out_dataset_dir.joinpath("boston" + ".geojson")
         self._aggregate_geojson(output_boston_gdf_path, valid_model_list)
@@ -601,3 +604,5 @@ class BostonModelDownloader:
         ), f"Mismatch between catalog (center: ({center_x_ft_from_catalog}, {center_y_ft_from_catalog})) and info.json (center: ({center_x_ft_from_info}, {center_y_ft_from_info}))"
 
         return True
+
+# %%
