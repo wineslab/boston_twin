@@ -1,4 +1,5 @@
-#  dataset
+training_data/ 
+dataset/
 tmp_data/
 __pycache__/
 __MACOSX/
@@ -6,6 +7,11 @@ __MACOSX/
 *.zip
 *.ply
 *.obj
+*.geojson
+*.xml
+*.h5
+
+
 
 
 # Byte-compiled / optimized / DLL files

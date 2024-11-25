@@ -1,107 +1,85 @@
-"""
-Pytorch dataloader 
-"""
+import os
+import h5py
 import torch
 from torch.utils.data import Dataset, DataLoader
-import numpy as np
-import os
 
-class CoverageDataset(Dataset):
-    """
-    PyTorch Dataset for elevation maps and coverage maps.
-    """
 
-    def __init__(self, data_dir, transform=None):
+class BostonTwinDataset(Dataset):
+    """
+    PyTorch Dataset for BostonTwin-generated data.
+    """
+    def __init__(self, data_dir: str, transform=None):
         """
-        Args:
-            data_dir (str): Path to the dataset directory.
-            transform (callable, optional): Optional transform to be applied
-                on a sample (e.g., normalization, data augmentation).
+        Initialize the dataset.
+
+        Parameters:
+        - data_dir (str): Path to the directory containing the .h5 dataset files.
+        - transform (callable, optional): Optional transform to apply to the data.
         """
         self.data_dir = data_dir
+        self.file_list = [os.path.join(data_dir, f) for f in os.listdir(data_dir) if f.endswith('.h5')]
         self.transform = transform
 
-        # List all elevation and coverage map files
-        self.elevation_files = sorted(
-            [f for f in os.listdir(data_dir) if f.startswith("elevation_map") and f.endswith(".npy")]
-        )
-        self.coverage_files = sorted(
-            [f for f in os.listdir(data_dir) if f.startswith("coverage_map") and f.endswith(".npy")]
-        )
-        assert len(self.elevation_files) == len(self.coverage_files), (
-            "Mismatch between number of elevation maps and coverage maps"
-        )
-
     def __len__(self):
-        return len(self.elevation_files)
+        return len(self.file_list)
 
     def __getitem__(self, idx):
-        """
-        Fetch a sample from the dataset.
-        Args:
-            idx (int): Index of the sample to fetch.
+        file_path = self.file_list[idx]
+        with h5py.File(file_path, 'r') as f:
+            elevation_map = f['elevation_map'][:]
+            path_gain = f['path_gain'][:]
+            center = f['center'][:]
+            resolution = f['resolution'][()]
+        
+        # Normalize inputs if needed (optional)
+        elevation_map = torch.tensor(elevation_map, dtype=torch.float32).unsqueeze(0)  # Add channel dimension
+        path_gain = torch.tensor(path_gain, dtype=torch.float32).unsqueeze(0)          # Add channel dimension
+        
+        # Apply transformations
+        if self.transform:
+            elevation_map, path_gain = self.transform((elevation_map, path_gain))
 
-        Returns:
-            dict: A dictionary containing 'elevation' and 'coverage' tensors.
-        """
-        # Load elevation and coverage maps
-        elevation_path = os.path.join(self.data_dir, self.elevation_files[idx])
-        coverage_path = os.path.join(self.data_dir, self.coverage_files[idx])
-
-        elevation_map = np.load(elevation_path).astype(np.float32)
-        coverage_map = np.load(coverage_path).astype(np.float32)
-
-        # Add channel dimension for U-Net compatibility
-        elevation_map = np.expand_dims(elevation_map, axis=0)  # Shape: (1, H, W)
-        coverage_map = np.expand_dims(coverage_map, axis=0)    # Shape: (1, H, W)
-
-        sample = {
-            "elevation": torch.from_numpy(elevation_map),
-            "coverage": torch.from_numpy(coverage_map),
+        return {
+            'elevation_map': elevation_map,
+            'path_gain': path_gain,
+            'center': torch.tensor(center, dtype=torch.float32),
+            'resolution': torch.tensor(resolution, dtype=torch.float32),
         }
 
-        # Apply any transformations if provided
-        if self.transform:
-            sample = self.transform(sample)
 
-        return sample
-
-# Define a DataLoader
-def get_dataloader(data_dir, batch_size=16, shuffle=True, num_workers=4, transform=None):
+def create_dataloader(data_dir, batch_size=32, shuffle=True, num_workers=4):
     """
-    Creates a DataLoader for the dataset.
-    Args:
-        data_dir (str): Path to the dataset directory.
-        batch_size (int): Number of samples per batch.
-        shuffle (bool): Whether to shuffle the data.
-        num_workers (int): Number of subprocesses to use for data loading.
-        transform (callable, optional): Optional transform to be applied on each sample.
+    Create a PyTorch DataLoader for the BostonTwin dataset.
+
+    Parameters:
+    - data_dir (str): Path to the directory containing .h5 dataset files.
+    - batch_size (int): Number of samples per batch.
+    - shuffle (bool): Whether to shuffle the data at every epoch.
+    - num_workers (int): Number of subprocesses for data loading.
 
     Returns:
-        DataLoader: PyTorch DataLoader instance.
+    - DataLoader: A PyTorch DataLoader for the dataset.
     """
-    dataset = CoverageDataset(data_dir, transform=transform)
-    dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        num_workers=num_workers,
-    )
+    dataset = BostonTwinDataset(data_dir)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
     return dataloader
 
-# Example Usage
+
+# Example usage
 if __name__ == "__main__":
-    # Path to the directory where the dataset is stored
-    dataset_dir = "training_data"
-    
-    # Get the DataLoader
-    dataloader = get_dataloader(dataset_dir, batch_size=8, shuffle=True, num_workers=2)
-    
-    # Iterate through the DataLoader
+    data_dir = "training_data"  # Path to your generated dataset
+    batch_size = 8
+
+    dataloader = create_dataloader(data_dir, batch_size=batch_size)
+
     for batch_idx, batch in enumerate(dataloader):
-        elevation = batch["elevation"]  # Shape: (B, 1, H, W)
-        coverage = batch["coverage"]    # Shape: (B, 1, H, W)
+        elevation_maps = batch['elevation_map']  # Shape: [batch_size, 1, H, W]
+        path_gains = batch['path_gain']          # Shape: [batch_size, 1, H, W]
+        centers = batch['center']                # Shape: [batch_size, 2]
+        resolutions = batch['resolution']        # Shape: [batch_size]
+
         print(f"Batch {batch_idx + 1}:")
-        print(f"  Elevation shape: {elevation.shape}")
-        print(f"  Coverage shape: {coverage.shape}")
-        break
+        print(f"  Elevation maps shape: {elevation_maps.shape}")
+        print(f"  Path gains shape: {path_gains.shape}")
+        print(f"  Centers: {centers}")
+        print(f"  Resolutions: {resolutions}")
