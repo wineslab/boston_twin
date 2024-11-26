@@ -1,6 +1,6 @@
 numpy
 geopandas
-mitsuba
+mitsuba<=3.6
 requests
 contextily
 open3d
