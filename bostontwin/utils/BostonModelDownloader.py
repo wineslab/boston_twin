@@ -23,7 +23,7 @@ PUBLIC_URL = "https://www.bostonplans.org/3d-data-maps/3d-smart-model/3d-data-do
 BASE_MODEL_URL = "https://maps.bostonplans.org/3d/Bos3d_BldgModels_20230927_OBJ"
 BASE_GROUND_URL = "https://maps.bostonplans.org/3d/Bos3d_Terrain_2011_OBJ"
 
-NU_URL = "https://repository.library.northeastern.edu/downloads/neu:ms35xx11z?datastream_id=content"
+NU_URL = "https://repository.library.northeastern.edu/files/neu:h989t4472"
 
 def char_range(c1, c2):
     """Generates the characters from `c1` to `c2`, inclusive."""

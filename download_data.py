@@ -3,7 +3,7 @@ from pathlib import Path
 
 import requests
 
-NU_URL = "https://repository.library.northeastern.edu/downloads/neu:ms35xx11z?datastream_id=content"
+NU_URL = "https://repository.library.northeastern.edu/files/neu:h989t4472"
 
 download_dir = Path(".")
 try:
