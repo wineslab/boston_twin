@@ -1,6 +1,6 @@
 numpy
 geopandas
-mitsuba<=3.6
+mitsuba==3.5.2
 requests
 contextily
 open3d
