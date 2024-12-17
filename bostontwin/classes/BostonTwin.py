@@ -496,7 +496,7 @@ class BostonTwin:
         scene_name: str,
         center_lon: float,
         center_lat: float,
-        side_m: float,
+        radius: float,
         load=False,
     ):
         """Generate a new scene specifying its center and radius.
@@ -514,7 +514,7 @@ class BostonTwin:
         load : bool, optional
             Load the scene as current scene. Defaults to False.
         """
-        radius = np.sqrt(2) * side_m / 2  # m
+        radius = np.sqrt(2) * radius / 2  # m
         azimuths = [45, 225]
 
         geod = pyproj.Geod(ellps="WGS84")
@@ -598,41 +598,50 @@ class BostonTwin:
         with open(out_path, "w") as f:
             json.dump(self._node_pos_dict, f, indent=4)
 
-    def export_scene_models(self, out_path: Union[Path, str]):
+    def export_scene_models(self, scene_name:str, out_dir: Union[Path, str]):
         """Copy the scene files (`<scene_name>.xml`, `<scene_name>.geojson`, `<scene_name>_tileinfo.geojson`, and the corresponding PLY meshes) to `out_path`.
 
         Parameters
         ----------
-        out_path : Union[Path,str]
+        out_dir : Union[Path,str]
             Path where to export the antenna location.
         """
-        if not isinstance(out_path, Path):
-            out_path = Path(out_path)
+        if not isinstance(out_dir, Path):
+            out_dir = Path(out_dir)
 
-        if out_path.suffix.lower() != "":
-            raise ValueError(f"out_path must point to a folder. Instead {out_path}")
+        if out_dir.suffix.lower() != "":
+            raise ValueError(f"out_dir must point to a folder. Instead {out_dir}")
 
-        if not out_path.is_dir():
-            out_path.mkdir(parents=True)
+        if not out_dir.is_dir():
+            out_dir.mkdir(parents=True)
 
         # scene XML
-        new_mi_scene_path = out_path.with_name(self.mi_scene_path.name)
-        shutil.copy(self.mi_scene_path, new_mi_scene_path)
+        mi_scene_path = self.dataset_dir.joinpath("scenes", scene_name + ".xml")
+        new_mi_scene_path = out_dir.joinpath(scene_name + ".xml")
+        shutil.copy(mi_scene_path, new_mi_scene_path)
 
         # scene GeoJSON
-        new_geo_scene_path = out_path.with_name(self.geo_scene_path.name)
-        shutil.copy(self.geo_scene_path, new_geo_scene_path)
+        geo_scene_path = self.dataset_dir.joinpath("scenes", scene_name + ".geojson")
+        new_geo_scene_path = out_dir.joinpath(scene_name + ".geojson")
+        shutil.copy(geo_scene_path, new_geo_scene_path)
 
         # scene tileinfo
-        new_tile_info_path = out_path.with_name(self.tile_info_path.name)
-        shutil.copy(self.tile_info_path, new_tile_info_path)
+        tile_info_path = self.dataset_dir.joinpath("scenes", scene_name + "_tileinfo.geojson")
+        new_tile_info_path = out_dir.joinpath(scene_name + "_tileinfo.geojson")
+        shutil.copy(tile_info_path, new_tile_info_path)
+        
+        # get mesh list
+        scene_gdf = gpd.read_file(
+            geo_scene_path,
+        )
+        model_list = scene_gdf["Model_ID"].values
 
         # copy meshes
-        new_mesh_path = out_path.joinpath("meshes")
+        new_mesh_path = out_dir.joinpath("meshes")
         new_mesh_path.mkdir(exist_ok=True, parents=True)
-        for mesh_id in self.boston_model.scenes_dict[self.scene_name]["models"]:
+        for mesh_id in model_list:
             mesh_in_path = self.boston_model.mesh_dir.joinpath(mesh_id + ".ply")
-            mesh_out_path = self.new_mesh_path.joinpath(mesh_id + ".ply")
+            mesh_out_path = new_mesh_path.joinpath(mesh_id + ".ply")
             shutil.copy(mesh_in_path, mesh_out_path)
 
     def export_scene_collada(self, out_path: Union[Path, str]):
