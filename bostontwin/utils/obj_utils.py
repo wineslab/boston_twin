@@ -61,7 +61,7 @@ def render_model(scene_dict, model_dict, model_name, sensor_name, center_view=Tr
     return render
 
 
-def obj2ply(obj_path, ply_path, ft2m=True, center=True):
+def obj2ply(obj_path, ply_path, ft2m=True, center=False):
     ## Convert the OBJ file to PLY, changing the unit to meters and centering the model file
     # the PLY file is saved in relative coordinates, centered in [0,0]
     # note that the unit is converted from feet to meters
@@ -79,12 +79,13 @@ def obj2ply(obj_path, ply_path, ft2m=True, center=True):
     # load the obj file
     obj_path = obj_path.resolve()
     mesh = o3d.io.read_triangle_mesh(str(obj_path))
+    print(mesh)
 
     # if center is True, center the mesh in (0,0,0)
     mesh_trans = [0, 0, 0]
     if center:
         mesh_center = mesh.get_center()
-        if len(center)==2:
+        if isinstance(center,tuple) and len(center)==2:
             mesh_center[0] = center[0]
             mesh_center[1] = center[1]
             

@@ -16,6 +16,16 @@ except:
 from .constants import FT2M_FACTOR
 from .obj_utils import create_ground_dict, get_mi_dict
 
+MATERIAL_BASEDICT = {
+        "type": "twosided",
+        "bsdf": {
+            "type": "diffuse",
+            "reflectance": {
+                "type": "rgb",
+                "value": [0.5, 0.5, 0.5],
+            },
+        },
+    }
 
 def generate_mi_xml(
     scene_name,
@@ -46,7 +56,19 @@ def generate_mi_xml(
             out_dir,
         )
         scene_dict["ground"] = ground_dict
-        mi.xml.dict_to_xml(scene_dict, str(out_dir.joinpath(scene_name + ".xml").resolve()))
+    mi.xml.dict_to_xml(scene_dict, str(out_dir.joinpath(scene_name + ".xml").resolve()))
+
+def generate_material_dict(models_materials):
+    material_names = list(set(models_materials))
+    n_materials = len(material_names)
+
+    material_dict = {}
+    # generate a color for each material
+    for i in range(n_materials):
+        color = [i / n_materials, 1 - i / n_materials, 0.5]
+        material_dict[material_names[i]] = MATERIAL_BASEDICT
+        material_dict[material_names[i]]["bsdf"]["reflectance"]["value"] = color
+    return material_dict
 
 def generate_mi_scene_dict(models_list, models_dir, out_dir, models_materials, models_center):
     mitsuba_scene_dict = {
@@ -55,37 +77,11 @@ def generate_mi_scene_dict(models_list, models_dir, out_dir, models_materials, m
             "type": "path",
         },
         "light": {"type": "constant"},
-        "mat-itu_brick": {
-            "type": "twosided",
-            "bsdf": {
-                "type": "diffuse",
-                "reflectance": {
-                    "type": "rgb",
-                    "value": [0.401968, 0.111874, 0.086764],
-                },
-            },
-        },
-        "mat-itu_concrete": {
-            "type": "twosided",
-            "bsdf": {
-                "type": "diffuse",
-                "reflectance": {
-                    "type": "rgb",
-                    "value": [0.539479, 0.539479, 0.539480],
-                },
-            },
-        },
-        "mat-itu_medium_dry_ground": {
-            "type": "twosided",
-            "bsdf": {
-                "type": "diffuse",
-                "reflectance": {
-                    "type": "rgb",
-                    "value": [65 / 255, 60 / 255, 60 / 255],
-                },
-            },
-        },
     }
+    # generate material dict
+    material_dict = generate_material_dict(models_materials)
+    mitsuba_scene_dict.update(material_dict)
+    
     for model_name, model_material, model_center in zip(
         models_list, models_materials, models_center
     ):

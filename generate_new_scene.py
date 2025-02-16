@@ -24,11 +24,11 @@ def main(args):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--scene_name", type=str, required=True)
-    parser.add_argument("--center_lon", type=float, required=True)
-    parser.add_argument("--center_lat", type=float, required=True)
-    parser.add_argument("--radius", type=float, required=True)
-    parser.add_argument("--out_dir", type=str, default=None, required=False)
+    parser.add_argument("--scene_name", type=str, required=True, help="Name of the new scene")
+    parser.add_argument("--center_lon", type=float, required=True, help="Longitude of the center of the new scene")
+    parser.add_argument("--center_lat", type=float, required=True, help="Latitude of the center of the new scene")
+    parser.add_argument("--radius", type=float, required=True, help="Radius of the new scene")
+    parser.add_argument("--out_dir", type=str, default=None, required=False, help="Output directory to save the new scene")
 
     args = parser.parse_args()
     main(args)

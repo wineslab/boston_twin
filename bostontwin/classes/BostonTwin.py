@@ -196,14 +196,23 @@ class BostonTwin:
             drop=True
         )
 
-    def get_scene_antennas(self):
+    def get_scene_antennas(self, local_crs=False):
         """Get the coordinates of all the antennas in the current scene.
+        
+        Parameters
+        ----------
+        local_crs : bool, optional
+            If True, return the antennas in the local CRS of the current scene.
+            Otherwise, return the antennas in geographic coordinates. Defaults to False.
 
         Returns
         -------
-        antennas_lonlat : gpd.GeoDataFrame
+        antennas_gdf : gpd.GeoDataFrame
             GeoDataFrame containing the antennas location in geographic coordinates."""
-        return self._current_scene_antennas
+        if local_crs:
+            return self._current_scene_antennas.to_crs(self._local_crs)
+        else:
+            return self._current_scene_antennas
 
     def get_boston_antennas(self):
         """Get the coordinates of all the antennas in Boston.
@@ -462,6 +471,8 @@ class BostonTwin:
         local_crs: bool = False,
         annotate: bool = False,
         ax: plt.Axes = None,
+        kwargs_buildings: dict = {},
+        kwargs_antennas: dict = {},
     ) -> Axes:
         """Plot the location of the antennas and the building footprint.
 
@@ -485,9 +496,9 @@ class BostonTwin:
         #         "'basemap' and 'local_crs' are currently incompatible. Please choose one."
         #     )
 
-        ax = self.plot_buildings(basemap=basemap, color="k", local_crs=local_crs, ax=ax)
+        ax = self.plot_buildings(basemap=basemap, local_crs=local_crs, ax=ax, **kwargs_buildings)
         ax = self.plot_antennas(
-            basemap=False, ax=ax, color="r", local_crs=local_crs, annotate=annotate
+            basemap=False, ax=ax, local_crs=local_crs, annotate=annotate, **kwargs_antennas
         )
         return ax
 
