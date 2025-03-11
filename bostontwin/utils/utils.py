@@ -57,7 +57,6 @@ def generate_mi_xml(
         )
         scene_dict["ground"] = ground_dict
     mi.xml.dict_to_xml(scene_dict, str(out_dir.joinpath(scene_name + ".xml").resolve()))
-    mi.xml.dict_to_xml(scene_dict, str(out_dir.joinpath(scene_name + ".xml").resolve()))
 
 def generate_material_dict(models_materials):
     material_names = list(set(models_materials))
