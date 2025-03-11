@@ -67,9 +67,9 @@ class BostonModel:
 
         return scenes_dict
 
-    def convert_to_ascii(self, out_mesh_dir: Union[str, Path] = None):
-        if not out_mesh_dir:
-            out_mesh_dir = self.mesh_dir
+    def convert_to_ascii(self, out_mesh_dir: Union[str, Path]):
+        if isinstance(out_mesh_dir, str):
+            out_mesh_dir = Path(out_mesh_dir)
         if not out_mesh_dir.is_dir():
             out_mesh_dir.mkdir(parents=True, exist_ok=True)
 
@@ -200,7 +200,7 @@ class BostonModel:
                 ]
             ]
             * len(models_materials),  # models_centers,
-            create_ground=True,
+            create_ground=False,
             ground_size=max(scene_size_x, scene_size_y),
             ground_center=[scene_center_local[0], scene_center_local[1]],
         )

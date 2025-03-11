@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from typing import Iterable, List, Tuple, Union
 
+from shapely.geometry import Point
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import mitsuba as mi
@@ -15,6 +16,7 @@ from collada import Collada, geometry, material, scene, source
 from matplotlib.axes import Axes
 from rasterio.features import rasterize
 from sionna.rt import load_scene
+from ..utils.constants import FT2M_FACTOR
 
 from ..utils.geo_utils import (
     check_point_in_area_of_use,
@@ -184,6 +186,10 @@ class BostonTwin:
         self._check_scene()
 
         scene_gdf = gpd.GeoDataFrame.from_file(self.geo_scene_path)
+        for col in scene_gdf.columns:
+            if "Ft" in col:
+                new_col = col.replace("_Ft", "_M")
+                scene_gdf[new_col] = scene_gdf[col] * FT2M_FACTOR
         self.current_scene_gdf_lonlat = scene_gdf
 
         self.current_scene_gdf_localcrs = self.current_scene_gdf_lonlat.copy()
@@ -313,7 +319,7 @@ class BostonTwin:
             self._load_mi_scene()
 
         if load_geodf:
-            self.current_scene_gdf_localcrs = self._load_scene_geodf(scene_name)
+            self.current_scene_gdf_localcrs = self._load_scene_geodf()
 
         return self.current_sionna_scene
 
@@ -751,8 +757,8 @@ class BostonTwin:
         transform = rasterio.transform.from_bounds(minx, miny, maxx, maxy, width, height)
         elevation = np.zeros((height, width), dtype=np.float32)
         
-        for geom, value in zip(self.current_scene_gdf_lonlat.geometry, self.current_scene_gdf_lonlat['Height_Ft']):
-            value_meters = value * 0.3048  # Convert feet to meters
+        for geom, value in zip(self.current_scene_gdf_lonlat.geometry, self.current_scene_gdf_lonlat['Height_M']):
+            value_meters = value
             rasterize(
             [(geom, value_meters)],
             out=elevation,
@@ -761,3 +767,12 @@ class BostonTwin:
             dtype=np.float32
             )
         return elevation
+
+    def get_building_height_from_latlon(self,lat, lon):
+        self._check_scene()
+        building_mask = self.current_scene_gdf_lonlat.contains(Point(lon, lat))
+        if building_mask.sum() == 0:
+            raise ValueError(f"No building found at ({lat},{lon})")
+        assert building_mask.sum() == 1, f"Multiple buildings found at ({lat},{lon})"
+        building_height = self.current_scene_gdf_lonlat.loc[building_mask, "Z_Max_M"].values[0]
+        return building_height

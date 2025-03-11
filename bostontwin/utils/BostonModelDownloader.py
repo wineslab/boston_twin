@@ -73,7 +73,8 @@ class BostonModelDownloader:
         self.n_tiles = len(self.tiles_dict)
 
     def download_data(self, save_dir: Union[Path, str], extract_objs=True) -> None:
-        try:
+        # try:
+        if False:
             print("Downloading the dataset from the Northeastern repository..")
             zip_dataset_path = save_dir.joinpath("BostonTwinDataset.zip")
             r = requests.get(NU_URL, stream=True, headers={"User-Agent": "'XYZ/3.0'"})
@@ -89,8 +90,9 @@ class BostonModelDownloader:
                 zip_dataset_path.unlink()
                 
                 return
-        except FileNotFoundError as e:
-            print(f"Can't download from the Northeastern repository. Trying the BPDA website. ({e})")
+        else:
+            # except FileNotFoundError as e:
+            # print(f"Can't download from the Northeastern repository. Trying the BPDA website. ({e})")
             pass
 
         if self.tiles_dict_path.is_file():
@@ -438,6 +440,7 @@ class BostonModelDownloader:
                         tile_model_catalog_path.parent.joinpath(model_name + ".obj"),
                         model_dir.joinpath(model_name + ".ply"),
                         self.original2local_transformer,
+                        flat=self.flat
                     )
                     
                     ## Choose the model material. For now, we only have two materials: brick, for walls, and concrete, for everything else
@@ -448,20 +451,17 @@ class BostonModelDownloader:
                         model_material = "mat-itu_concrete"
                     models_materials.append(model_material)
                     
-                    tile_model_catalog_gdf[
-                        tile_model_catalog_gdf["Model_ID"] == model_name
-                    ]["Center_X_local"] = model_center[0]
-                    tile_model_catalog_gdf[
-                        tile_model_catalog_gdf["Model_ID"] == model_name
-                    ]["Center_Y_local"] = model_center[1]
-                    tile_model_catalog_gdf[tile_model_catalog_gdf["Model_ID"] == model_name]["Center_Z_local"] = model_center[2]
-                    tile_model_catalog_gdf[tile_model_catalog_gdf["Model_ID"] == model_name]["n_triangles"] = model_n_tri
+                    tile_model_catalog_gdf.loc[tile_model_catalog_gdf["Model_ID"] == model_name,"Center_X_local"] = model_center[0]
+                    tile_model_catalog_gdf.loc[tile_model_catalog_gdf["Model_ID"] == model_name,"Center_Y_local"] = model_center[1]
+                    tile_model_catalog_gdf.loc[tile_model_catalog_gdf["Model_ID"] == model_name,"Center_Z_local"] = model_center[2]
+                    tile_model_catalog_gdf.loc[tile_model_catalog_gdf["Model_ID"] == model_name,"n_triangles"] = model_n_tri
 
                     triangles_list.append(model_n_tri)
                     models_centers.append(model_center)
                     valid_model_list.append(model_name)
                     n_models_tile = n_models_tile + 1
 
+                create_ground = self.flat
                 generate_mi_xml(
                     scene_name=tile_name,
                     models_list=model_list,
@@ -471,7 +471,7 @@ class BostonModelDownloader:
                     models_center=[[0, 0]]
                     * len(models_materials),
                     # models_center=[[-tile_center[0],-tile_center[1]]]*len(models_materials), # models_centers,
-                    create_ground=True,
+                    create_ground=create_ground,
                     ground_center=[tile_center[0], tile_center[1]],
                 )
 
@@ -542,13 +542,17 @@ class BostonModelDownloader:
                 prj_str = f.readline()
                 self.original_crs = pyproj.CRS.from_wkt(prj_str)
 
-        self.local_crs = get_crs(scene_name="BostonTwin", scene_center_lon_lat=self.bostontwin_center)
+        self.local_crs = get_crs(scene_name="BostonTwin", scene_center_lon_lat=self.bostontwin_center).to_3d()
         with open(self.out_dataset_dir.parent.joinpath("BostonTwin.wkt"), "w") as f:
             f.write(self.local_crs.to_wkt(output_axis_rule=True))
         
         self.local_crs_lonlat = pyproj.CRS.from_user_input("EPSG:4326")
+
         self.original2local_transformer = pyproj.Transformer.from_crs(
-            self.original_crs, self.local_crs, always_xy=True
+            self.original_crs,
+            self.local_crs,
+            always_xy=True,
+            allow_ballpark=False,  # Ensures real transformation, not an approximation
         )
 
         self.lonlat2local_transformer = pyproj.Transformer.from_crs(self.local_crs_lonlat, self.local_crs, always_xy=True)

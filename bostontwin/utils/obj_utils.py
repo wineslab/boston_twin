@@ -131,9 +131,15 @@ def obj2ply_crs_conversion(obj_path, ply_path, transformer, flat=True):
 
     vertices = np.asarray(mesh.vertices)
 
-    new_vertices = transformer.transform(vertices[:, 0], vertices[:, 1], vertices[:, 2])
+    new_vertices = transformer.transform(
+        vertices[:, 0], vertices[:, 1], vertices[:, 2], errcheck=True
+    )
     new_vertices = np.array(new_vertices).T
-    
+    if np.all(np.abs(new_vertices[:,2]-vertices[:,2])<1e-6):
+        # print("No change in Z values. Applying manual conversion.")
+        # TODO: fix this
+        new_vertices[:,2] = vertices[:,2]*FT2M_FACTOR
+
     if flat:
         new_vertices[:,2] = new_vertices[:,2] - new_vertices[:,2].min()
 
@@ -183,6 +189,10 @@ def create_ground_dict(
         "face_normals": True,
         "to_world": to_relative,
     }
+    
+    print("Base rect path: ", base_rect_path)
+    print(base_rect_path.exists())
+    
     model = mi.load_dict(in_model_dict)  # load the model into mitsuba
     n_tri = model.face_count()
 
