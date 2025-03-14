@@ -48,8 +48,8 @@ class BostonTwin:
         self.dataset_dir:Path = dataset_dir
         "Path to the Boston Twin."
 
-        self.boston_model_path:Path = dataset_dir.joinpath("scenes")
-        "Path to the Boston Model folder (dataset_dir/boston3d)."
+        self.boston_model_path:Path = dataset_dir.joinpath("scenes_flat")
+        "Path to the Boston Model folder (dataset_dir/scenes)."
         
         self.boston_model:BostonModel = BostonModel(self.boston_model_path)
         "BostonModel instance, containing the information on the 3D model of the structures in Boston."
