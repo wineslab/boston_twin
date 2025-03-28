@@ -1,4 +1,4 @@
-from bostontwin.classes.BostonTwin import BostonTwin
+from src.classes.BostonTwin import BostonTwin
 from argparse import ArgumentParser
 from pathlib import Path
 
