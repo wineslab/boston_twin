@@ -1,19 +1,32 @@
 [build-system]
 requires = [
     "setuptools>=42",
-    "wheel",
-    "sionna-rt",
-    "geopandas",
-    "open3d-cpu",
-    "pycollada",
-    "numpy",
-    "mitsuba",
-    "requests"
+    "wheel"
 ]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["."]  # list of folders that contain the packages (["."] by default)
-include = ["src"]  # package names should match these glob patterns (["*"] by default)
-exclude = []  # exclude packages matching these glob patterns (empty by default)
-namespaces = false  # to disable scanning PEP 420 namespaces (true by default)
+where = ["src"]
+
+[project]
+name = "bostontwin"
+version = "1.0.0"
+description = "Boston Twin - The Boston Digital Twin for EM Simulation"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [
+    { name = "Paolo Testolina", email = "p.testolina@northeastern.edu" }
+]
+dependencies = [
+"geopandas",
+"open3d",
+"pycollada",
+"numpy",
+"mitsuba",
+"requests",
+"rasterio",
+"contextily",
+]
+
+[project.optional-dependencies]
+sionna-rt=["sionna-rt"]
