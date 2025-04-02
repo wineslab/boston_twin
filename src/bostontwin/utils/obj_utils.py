@@ -4,8 +4,8 @@ import mitsuba as mi
 import numpy as np
 import open3d as o3d
 from typing import Union
-from src.bostontwin.utils.constants import FT2M_FACTOR
-from src.bostontwin.utils.mi_utils import get_transformation_matrix
+from .constants import FT2M_FACTOR
+from .mi_utils import get_transformation_matrix
 
 
 def read_mesh(mesh_path: Union[Path, str]) -> o3d.geometry.TriangleMesh:
