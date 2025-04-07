@@ -16,8 +16,8 @@ import requests
 import shapely as shp
 from shapely.geometry import box
 
-from src.bostontwin.utils.geo_utils import check_area_of_use, gdf2crs, get_crs
-from src.bostontwin.utils.obj_utils import (
+from .geo_utils import check_area_of_use, gdf2crs, get_crs
+from .obj_utils import (
     create_ground_dict,
     dir_obj2ply,
     obj2ply_crs_conversion,
@@ -25,11 +25,9 @@ from src.bostontwin.utils.obj_utils import (
     merge_meshes,
     save_mesh,
 )
-from src.bostontwin.utils.utils import print_eta, truncate_utf8_chars
-from src.bostontwin.utils.mi_utils import create_mitsuba_xml, get_transformation_matrix
+from .utils import print_eta, truncate_utf8_chars
+from .mi_utils import create_mitsuba_xml, get_transformation_matrix
 from typing import List, Tuple
-
-mi.set_variant("scalar_rgb")
 
 logging.basicConfig(level=logging.INFO)
 

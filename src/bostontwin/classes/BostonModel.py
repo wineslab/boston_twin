@@ -15,10 +15,10 @@ import shapely as shp
 from ..utils.geo_utils import gdf2crs
 from ..utils.utils import generate_mi_xml
 
-try:
-    mi.set_variant("llvm_ad_rgb")
-except:
-    mi.set_variant("scalar_rgb")
+# try:
+#     mi.set_variant("llvm_ad_rgb")
+# except:
+#     mi.set_variant("scalar_rgb")
 
 
 class BostonModel:

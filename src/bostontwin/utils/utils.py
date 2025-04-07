@@ -5,14 +5,6 @@ from typing import Union
 
 import mitsuba as mi
 
-try:
-    mi.set_variant("cuda_ad_rgb")
-except:
-    try:
-        mi.set_variant("llvm_ad_rgb")
-    except:
-        mi.set_variant("scalar_rgb")
-
 from .constants import FT2M_FACTOR
 from .obj_utils import create_ground_dict, get_mi_dict
 

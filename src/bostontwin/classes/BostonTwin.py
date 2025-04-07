@@ -17,7 +17,7 @@ from matplotlib.axes import Axes
 from rasterio.features import rasterize
 from sionna.rt import load_scene
 from ..utils.constants import FT2M_FACTOR
-
+from ..utils.obj_utils import read_mesh
 from ..utils.geo_utils import (
     check_point_in_area_of_use,
     gdf2crs,
@@ -170,13 +170,19 @@ class BostonTwin:
             "geo_scene_path"
         ]
 
-        self.mi_scene_path = self.boston_model.scenes_dict[self.current_scene_name][
+        self.mi_scene_path = Path(self.boston_model.scenes_dict[self.current_scene_name][
             "mi_scene_path"
-        ]
+        ])
 
         self._current_scene_antennas = self._get_antenna_location_from_bb(
             *self.current_scene_info_gdf.total_bounds
         )
+        
+        # TODO: check if flat
+        self.current_scene_terrain_path = self.boston_model.mesh_dir.joinpath(
+            self.current_scene_name + "_terrain.ply"
+        )
+
 
     def _load_mi_scene(self):
         self._check_scene()
@@ -320,7 +326,7 @@ class BostonTwin:
 
         if load_geodf:
             self.current_scene_gdf_localcrs = self._load_scene_geodf()
-
+        
         return self.current_sionna_scene
 
     def plot_buildings(
@@ -769,7 +775,7 @@ class BostonTwin:
             )
         return elevation
 
-    def get_building_height_from_latlon(self,lat, lon):
+    def get_building_height_from_latlon(self, lat:float, lon:float):
         self._check_scene()
         building_mask = self.current_scene_gdf_lonlat.contains(Point(lon, lat))
         if building_mask.sum() == 0:
@@ -777,3 +783,37 @@ class BostonTwin:
         assert building_mask.sum() == 1, f"Multiple buildings found at ({lat},{lon})"
         building_height = self.current_scene_gdf_lonlat.loc[building_mask, "Z_Max_M"].values[0]
         return building_height
+    
+    def get_terrain_elevation_from_latlon(self, lat:float, lon:float):
+        """
+        Get the elevation by finding the nearest vertices to the query point.
+        This is a more robust version of the nearest vertex method.
+        
+        Args:
+            mesh (open3d.geometry.TriangleMesh): The terrain mesh
+            x (float): x-coordinate
+            y (float): y-coordinate
+            
+        Returns:
+            float: The elevation of the nearest vertex
+        """
+        x, y = self._lonlat2local.transform(lon, lat)
+        return self.get_terrain_elevation_from_xy(x, y)
+    
+    def get_terrain_elevation_from_xy(self, x:float, y:float):
+        mesh = read_mesh(self.current_scene_terrain_path)
+
+        # Get vertices
+        vertices = np.asarray(mesh.vertices)
+        
+        # Project query point and vertices to 2D
+        query_point = np.array([x, y])
+        vertices_2d = vertices[:, :2]
+
+        # Find the nearest vertex
+        distances = np.sqrt(np.sum((vertices_2d - query_point)**2, axis=1))
+        nearest_ids = np.argpartition(distances, 3)[:3]  # Get indices of the 3 nearest vertices
+        z_values = np.mean(vertices[nearest_ids, 2])
+
+        # Return the z-coordinate of the nearest vertex
+        return z_values
