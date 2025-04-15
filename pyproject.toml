@@ -9,6 +9,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [project]
+requires-python = ">= 3.10"
 name = "bostontwin"
 version = "1.0.0"
 description = "Boston Twin - The Boston Digital Twin for EM Simulation"
@@ -22,7 +23,7 @@ dependencies = [
 "open3d",
 "pycollada",
 "numpy",
-"mitsuba",
+# "mitsuba",
 "requests",
 "rasterio",
 "contextily",
@@ -30,3 +31,6 @@ dependencies = [
 
 [project.optional-dependencies]
 sionna-rt=["sionna-rt"]
+
+[tool.uv]
+package = true

@@ -19,6 +19,7 @@ ENV PATH="/root/.local/bin/:$PATH"
 
 RUN mkdir -p /boston_twin
 WORKDIR /boston_twin
+RUN uv init
 
 # COPY src .
 # COPY generate_dataset.py .
