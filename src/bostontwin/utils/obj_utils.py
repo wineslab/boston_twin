@@ -30,9 +30,9 @@ def save_mesh(mesh: o3d.geometry.TriangleMesh, mesh_path: Union[Path, str]):
 def dir_obj2ply(obj_dir, ply_dir, recursive=True, **kwargs):
     meshes_info = {}
     obj_list = (
-        list(obj_dir.glob("**/*.obj"))
+        list(obj_dir.rglob("**/*.obj"))
         if recursive
-        else list(obj_dir.glob("*.obj"))
+        else list(obj_dir.rglob("*.obj"))
     )
     for obj_path in obj_list:
         ply_path = ply_dir.joinpath(obj_path.stem + ".ply")
